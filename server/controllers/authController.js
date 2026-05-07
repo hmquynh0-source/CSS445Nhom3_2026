@@ -20,7 +20,9 @@ const generateToken = (id) => {
  * @access  Public
  */
 exports.registerUser = async (req, res) => {
-    const { name, email, password } = req.body;
+    const { name, email, password, role } = req.body;
+    const validRoles = ['admin', 'manager', 'staff', 'supplier', 'customer'];
+    const userRole = validRoles.includes(role) ? role : 'staff';
 
     try {
         // 1. Kiểm tra email đã tồn tại chưa
@@ -35,7 +37,7 @@ exports.registerUser = async (req, res) => {
             name,
             email,
             password,
-            // role sẽ lấy giá trị default từ User Model (ví dụ: 'admin' hoặc 'staff')
+            role: userRole,
         });
 
         if (user) {
@@ -106,6 +108,39 @@ exports.loginUser = async (req, res) => {
             success: false, 
             message: 'Lỗi server khi đăng nhập.', 
             error: error.message 
+        });
+    }
+};
+
+/**
+ * @desc    Quên mật khẩu
+ * @route   POST /api/auth/forgot-password
+ * @access  Public
+ */
+exports.forgotPassword = async (req, res) => {
+    const { email } = req.body;
+
+    if (!email) {
+        return res.status(400).json({ success: false, message: 'Vui lòng cung cấp email.' });
+    }
+
+    try {
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'Email không tồn tại trong hệ thống.' });
+        }
+
+        // TODO: Tích hợp gửi email thực tế tại đây.
+        res.json({
+            success: true,
+            message: 'Yêu cầu khôi phục mật khẩu đã được gửi. Vui lòng kiểm tra email của bạn.'
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi server khi gửi yêu cầu khôi phục mật khẩu.',
+            error: error.message,
         });
     }
 };

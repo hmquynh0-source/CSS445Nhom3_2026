@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { useAuth } from './AuthContext';
 
@@ -101,19 +101,19 @@ export const ROLE_PERMISSIONS = {
 const RBACContext = createContext();
 
 export const RBACProvider = ({ children }) => {
-    const { user } = useAuth();
+    const { userProfile } = useAuth();
     const [userRole, setUserRole] = useState(ROLES.WAREHOUSE_STAFF);
     const [userPermissions, setUserPermissions] = useState([]);
     const [auditLog, setAuditLog] = useState([]);
 
     useEffect(() => {
         // Get user role from profile
-        if (user) {
-            const role = user.role || ROLES.WAREHOUSE_STAFF;
+        if (userProfile) {
+            const role = userProfile.role || ROLES.WAREHOUSE_STAFF;
             setUserRole(role);
             setUserPermissions(ROLE_PERMISSIONS[role] || []);
         }
-    }, [user]);
+    }, [userProfile]);
 
     // Check if user has permission
     const hasPermission = (permission) => {
@@ -136,7 +136,7 @@ export const RBACProvider = ({ children }) => {
         const auditEntry = {
             id: Date.now(),
             timestamp: new Date().toISOString(),
-            user: user?.username || 'unknown',
+            user: userProfile?.name || 'unknown',
             role: userRole,
             action,
             details,
@@ -145,15 +145,17 @@ export const RBACProvider = ({ children }) => {
         setAuditLog(prev => [auditEntry, ...prev].slice(0, 1000)); // Keep last 1000 entries
     };
 
+    const value = useMemo(() => ({
+        userRole,
+        userPermissions,
+        hasPermission,
+        hasRole,
+        auditLog,
+        logAudit
+    }), [userRole, userPermissions, auditLog]);
+
     return (
-        <RBACContext.Provider value={{
-            userRole,
-            userPermissions,
-            hasPermission,
-            hasRole,
-            auditLog,
-            logAudit
-        }}>
+        <RBACContext.Provider value={value}>
             {children}
         </RBACContext.Provider>
     );

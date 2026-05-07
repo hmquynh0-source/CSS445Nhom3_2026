@@ -27,7 +27,7 @@ const UserSchema = mongoose.Schema(
         },
         role: {
             type: String,
-            enum: ['admin', 'manager', 'staff'], // Phân quyền
+            enum: ['admin', 'manager', 'staff', 'supplier', 'customer'], // Phân quyền
             default: 'staff',
         }
     },

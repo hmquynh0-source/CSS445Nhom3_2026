@@ -11,7 +11,7 @@ const BASE_URL = '/api/categories';
 
 const CategoriesPage = () => {
     const { token } = useAuth();
-    const { triggerRefresh, shouldRefresh } = useDataRefresh(); 
+    const { triggerRefresh, refreshSignal } = useDataRefresh(); 
     
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -51,7 +51,7 @@ const CategoriesPage = () => {
         if (token) {
             fetchCategories();
         }
-    }, [token, shouldRefresh]); // shouldRefresh giúp tự động tải lại
+    }, [token, refreshSignal]); // refreshSignal giúp tự động tải lại
 
     // --- FORM HANDLERS ---
     const handleChange = (e) => {

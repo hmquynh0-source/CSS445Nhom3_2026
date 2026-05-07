@@ -4,7 +4,7 @@ import { useRBAC } from '../context/RBACContext';
 import { FaRobot, FaPaperPlane, FaHistory, FaClock, FaCheck, FaTrash, FaDownload } from 'react-icons/fa';
 
 const AIAssistantProPage = () => {
-    const { user, token } = useAuth();
+    const { userProfile, token } = useAuth();
     const { hasPermission } = useRBAC();
     const [conversations, setConversations] = useState([]);
     const [currentConversation, setCurrentConversation] = useState(null);

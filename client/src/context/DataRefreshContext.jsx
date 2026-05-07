@@ -1,5 +1,5 @@
 // client/src/context/DataRefreshContext.jsx
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useMemo } from 'react';
 
 // 1. Tạo Context
 export const DataRefreshContext = createContext();
@@ -21,10 +21,10 @@ export const DataRefreshProvider = ({ children }) => {
         setRefreshSignal(prev => prev + 1); 
     };
 
-    const value = {
+    const value = useMemo(() => ({
         refreshSignal, // Giá trị để lắng nghe
         triggerRefresh // Hàm để kích hoạt làm mới
-    };
+    }), [refreshSignal]);
 
     return (
         <DataRefreshContext.Provider value={value}>

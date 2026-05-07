@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FaCoffee, FaSignOutAlt, FaHome, FaFileAlt, FaStar, FaUpload, FaBars, FaTimes, FaUser } from 'react-icons/fa';
+import { FaCoffee, FaSignOutAlt, FaHome, FaFileAlt, FaStar, FaUpload, FaBars, FaTimes, FaUser, FaCog } from 'react-icons/fa';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const VendorLayout = ({ children }) => {
@@ -21,7 +21,8 @@ const VendorLayout = ({ children }) => {
     { path: '/vendor/dashboard', label: 'Dashboard', icon: <FaHome /> },
     { path: '/vendor/orders', label: 'Đơn Hàng', icon: <FaFileAlt /> },
     { path: '/vendor/scorecard', label: 'Bảng Xếp Hạng', icon: <FaStar /> },
-    { path: '/vendor/deliveries', label: 'Giao Hàng', icon: <FaUpload /> }
+    { path: '/vendor/deliveries', label: 'Giao Hàng', icon: <FaUpload /> },
+    { path: '/settings', label: 'Cài đặt', icon: <FaCog /> }
   ];
 
   return (

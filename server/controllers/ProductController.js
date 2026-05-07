@@ -1,157 +1,124 @@
-// server/controllers/ProductController.js
-
 const asyncHandler = require('express-async-handler');
-const Product = require('../models/Product');
-const { formatErrors } = require('../utils/validationUtils'); // Nếu bạn có file này
+const Product = require('../models/Product'); // Đảm bảo đường dẫn model đúng
 
-// @desc Get all Products
-// @route GET /api/products
-// @access Private
-
+// @desc    Lấy danh sách sản phẩm (Có hỗ trợ tìm kiếm và lọc)
+// @route   GET /api/products
+// @access  Public
 const getProducts = asyncHandler(async (req, res) => {
+    const { keyword, category } = req.query;
     
-    const products = await Product.find()
-        .populate('category', 'name') // Lấy trường 'name' từ bảng Category
-        .populate('supplier', 'name') // Lấy trường 'name' từ bảng Supplier
+    let query = {};
+
+    // Logic tìm kiếm theo tên hoặc SKU
+    if (keyword) {
+        query.$or = [
+            { name: { $regex: keyword, $options: 'i' } },
+            { sku: { $regex: keyword, $options: 'i' } }
+        ];
+    }
+
+    // Logic lọc theo Category (nếu có truyền ID)
+    if (category && category !== 'Tất cả Chủng loại') {
+        query.category = category;
+    }
+
+    const products = await Product.find(query)
+        .populate('category', 'name') // Lấy thêm tên chủng loại
+        .populate('supplier', 'name') // Lấy thêm tên nhà cung cấp
         .sort({ createdAt: -1 });
 
-    res.status(200).json({ 
-        message: 'Lấy danh sách sản phẩm thành công',
-        data: products,
-        total: products.length
+    res.status(200).json({
+        success: true,
+        count: products.length,
+        data: products
     });
 });
 
-// @desc Create New Product
-// @route POST /api/products
-// @access Private
+// @desc    Tạo sản phẩm mới
+// @route   POST /api/products
+// @access  Public
 const createProduct = asyncHandler(async (req, res) => {
-    const { name, sku, description, costPrice, salePrice, unit, category, supplier } = req.body;
+    const { name, sku, costPrice, salePrice, unit, category, supplier, image, stockQuantity } = req.body;
 
-    // Kiểm tra trường bắt buộc
-    if (!name || !sku || !costPrice || !salePrice || !unit) {
+    // 1. Kiểm tra các trường bắt buộc ở mức ứng dụng
+    if (!name || !sku || !unit) {
         res.status(400);
-        throw new Error('Vui lòng nhập đầy đủ các trường bắt buộc (Tên, Mã SKU, Giá nhập, Giá bán, Đơn vị tính).');
+        throw new Error("Vui lòng nhập đầy đủ các trường bắt buộc: Tên, Mã SKU, Đơn vị tính.");
     }
-    
-    // Kiểm tra nếu SKU hoặc Tên đã tồn tại
-    const productExists = await Product.findOne({ $or: [{ sku }, { name }] });
-    if (productExists) {
-        res.status(400);
-        throw new Error('Mã SKU hoặc Tên sản phẩm đã tồn tại.');
-    }
-    
-    // Tạo sản phẩm mới. stockQuantity sẽ được tự động gán là 0 (theo Model).
+
+    // 2. Xử lý ID an toàn: Tránh lỗi Cast to ObjectId nếu gửi chuỗi rỗng
+    const cleanCategory = (category && category !== "" && category !== "undefined") ? category : null;
+    const cleanSupplier = (supplier && supplier !== "" && supplier !== "undefined") ? supplier : null;
+
+    // 3. Tạo sản phẩm
     const product = await Product.create({
         name,
         sku,
-        description,
-        costPrice: parseFloat(costPrice),
-        salePrice: parseFloat(salePrice),
+        costPrice: Number(costPrice) || 0,
+        salePrice: Number(salePrice) || 0,
         unit,
-        category, // Lưu ID loại sản phẩm
-        supplier, // Lưu ID nhà cung cấp
+        category: cleanCategory,
+        supplier: cleanSupplier,
+        image,
+        stockQuantity: Number(stockQuantity) || 0
     });
 
-    if (product) {
-        res.status(201).json({
-            message: 'Thêm sản phẩm thành công',
-            data: product
-        });
-    } else {
-        res.status(400);
-        throw new Error('Dữ liệu sản phẩm không hợp lệ.');
-    }
+    res.status(201).json({
+        success: true,
+        data: product
+    });
 });
 
-
-// @desc Update Product
-// @route PUT /api/products/:id
-// @access Private
+// @desc    Cập nhật sản phẩm
+// @route   PUT /api/products/:id
+// @access  Public
 const updateProduct = asyncHandler(async (req, res) => {
+    // Kiểm tra ID từ URL có hợp lệ không trước khi truy vấn
     const product = await Product.findById(req.params.id);
 
     if (!product) {
         res.status(404);
-        throw new Error('Không tìm thấy sản phẩm');
+        throw new Error("Không tìm thấy sản phẩm để cập nhật.");
     }
 
-    // Loại bỏ stockQuantity để không cho phép sửa tồn kho trực tiếp qua đây
-    const { stockQuantity, ...updateData } = req.body;
-    
-    // Kiểm tra trùng lặp SKU/Tên (Loại trừ sản phẩm hiện tại)
-    const checkDuplicateConditions = [];
-    if (updateData.sku && updateData.sku !== product.sku) {
-        checkDuplicateConditions.push({ sku: updateData.sku });
-    }
-    if (updateData.name && updateData.name !== product.name) {
-        checkDuplicateConditions.push({ name: updateData.name });
-    }
+    // Xử lý ID an toàn cho Category và Supplier
+    if (req.body.category === "" || req.body.category === "undefined") req.body.category = null;
+    if (req.body.supplier === "" || req.body.supplier === "undefined") req.body.supplier = null;
 
-    if (checkDuplicateConditions.length > 0) {
-        const duplicateProduct = await Product.findOne({
-            $or: checkDuplicateConditions,
-            _id: { $ne: req.params.id }
-        });
-
-        if (duplicateProduct) {
-            res.status(400);
-            const field = (duplicateProduct.sku === updateData.sku) ? 'Mã SKU' : 'Tên sản phẩm';
-            throw new Error(`${field} mới đã được sử dụng bởi sản phẩm khác.`);
-        }
-    }
-    
-    if (updateData.costPrice) updateData.costPrice = parseFloat(updateData.costPrice);
-    if (updateData.salePrice) updateData.salePrice = parseFloat(updateData.salePrice);
-
-    // THỰC HIỆN CẬP NHẬT
     const updatedProduct = await Product.findByIdAndUpdate(
         req.params.id,
-        updateData,
+        { $set: req.body },
         { new: true, runValidators: true }
-    )
-    .populate('category', 'name') // POPULATE Ở ĐÂY để Frontend nhận kết quả mới nhất
-    .populate('supplier', 'name');
+    ).populate('category supplier');
 
-    if (updatedProduct) {
-        res.status(200).json({
-            message: 'Cập nhật sản phẩm thành công',
-            data: updatedProduct
-        });
-    } else {
-        res.status(400);
-        throw new Error('Lỗi cập nhật sản phẩm.');
-    }
+    res.status(200).json({
+        success: true,
+        data: updatedProduct
+    });
 });
-// @desc Delete Product
-// @route DELETE /api/products/:id
-// @access Private
+
+// @desc    Xóa sản phẩm
+// @route   DELETE /api/products/:id
+// @access  Public
 const deleteProduct = asyncHandler(async (req, res) => {
     const product = await Product.findById(req.params.id);
 
     if (!product) {
         res.status(404);
-        throw new Error('Không tìm thấy sản phẩm');
+        throw new Error("Sản phẩm không tồn tại.");
     }
 
-    // LOGIC: KHÔNG CHO XÓA nếu stockQuantity > 0.
-    if (product.stockQuantity > 0) {
-        res.status(400);
-        throw new Error('Không thể xóa sản phẩm khi tồn kho vẫn còn. Vui lòng tạo phiếu xuất kho trước khi xóa.');
-    }
+    await product.deleteOne();
 
-    await Product.deleteOne({ _id: req.params.id });
-
-    res.status(200).json({ 
-        message: 'Xóa sản phẩm thành công',
-        id: req.params.id 
+    res.status(200).json({
+        success: true,
+        message: "Đã xóa sản phẩm thành công."
     });
 });
-
 
 module.exports = {
     getProducts,
     createProduct,
     updateProduct,
-    deleteProduct,
+    deleteProduct
 };

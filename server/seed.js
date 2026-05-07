@@ -7,6 +7,7 @@ const Product = require('./models/Product');
 const Transaction = require('./models/Transaction');
 const Category = require('./models/Category');
 const Supplier = require('./models/Supplier');
+const User = require('./models/User');
 
 const clearData = async () => {
     try {
@@ -18,6 +19,7 @@ const clearData = async () => {
         await Product.deleteMany();
         await Category.deleteMany();
         await Supplier.deleteMany();
+        await User.deleteMany();
 
         console.log('All data cleared successfully - Database is now empty');
         process.exit(0);
@@ -33,12 +35,44 @@ const clearData = async () => {
 const seedData = async () => {
     try {
         await connectDB();
-        console.log('Connected to DB - No seed data to insert');
+        console.log('Connected to DB');
 
-        console.log('Database is ready for manual data entry via web interface');
+        // Create sample users with different roles
+        const users = [
+            {
+                name: 'Admin User',
+                email: 'admin@estate.supply',
+                password: 'password123',
+                role: 'admin'
+            },
+            {
+                name: 'Supplier User',
+                email: 'supplier@estate.supply',
+                password: 'password123',
+                role: 'supplier'
+            },
+            {
+                name: 'Customer User',
+                email: 'customer@estate.supply',
+                password: 'password123',
+                role: 'customer'
+            }
+        ];
+
+        for (const userData of users) {
+            const userExists = await User.findOne({ email: userData.email });
+            if (!userExists) {
+                await User.create(userData);
+                console.log(`Created user: ${userData.email} with role: ${userData.role}`);
+            } else {
+                console.log(`User ${userData.email} already exists`);
+            }
+        }
+
+        console.log('Database seeded with sample users');
         process.exit(0);
     } catch (error) {
-        console.error('Error connecting to DB:', error);
+        console.error('Error seeding data:', error);
         process.exit(1);
     }
 };

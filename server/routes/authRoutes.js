@@ -4,6 +4,7 @@ const express = require('express');
 const { 
     registerUser, 
     loginUser,
+    forgotPassword,
     getMe // Thêm hàm này để dùng khi cần lấy thông tin user
 } = require('../controllers/authController');
 
@@ -21,6 +22,11 @@ router.post('/register', registerUser);
 // @desc    Đăng nhập người dùng
 // @access  Public
 router.post('/login', loginUser);
+
+// @route   POST /api/auth/forgot-password
+// @desc    Yêu cầu quên mật khẩu
+// @access  Public
+router.post('/forgot-password', forgotPassword);
 
 // @route   GET /api/auth/me
 // @desc    Lấy thông tin người dùng đang đăng nhập (Protected Route)

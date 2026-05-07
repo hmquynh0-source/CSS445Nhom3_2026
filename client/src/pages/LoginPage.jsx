@@ -1,18 +1,27 @@
-// client/src/pages/LoginPage.jsx (ĐÃ SỬA VÀ BỔFaHardDrive SUNG LIÊN KẾT ĐĂNG KÝ)
 import React, { useState } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom'; // 💡 FIX 1 & 2: Gộp và thêm Link
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 
 const LoginPage = () => {
-    const [email, setEmail] = useState('admin@kho.com');
+    // Thông tin đăng nhập mẫu cho từng vai trò
+    const emailPresets = {
+        admin: 'admin@example.com',
+        supplier: 'supplier@example.com',
+        customer: 'customer@example.com'
+    };
+
+    const [email, setEmail] = useState(emailPresets.admin);
     const [password, setPassword] = useState('password123');
+    const [role, setRole] = useState('admin'); 
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    
     const navigate = useNavigate();
     const location = useLocation();
     const { login } = useAuth();
 
+    // Lấy đường dẫn trang trước đó người dùng định truy cập (nếu có)
     const from = location.state?.from?.pathname || '/';
 
     const handleSubmit = async (e) => {
@@ -21,216 +30,251 @@ const LoginPage = () => {
         setLoading(true);
 
         try {
-            const response = await axios.post('/api/auth/login', {
-                email,
-                password
-            }, {
-                headers: { 'Content-Type': 'application/json' }
-            });
+            // Gửi yêu cầu đăng nhập đến API backend
+            const response = await axios.post('/api/auth/login', { email, password, role });
 
             if (response.data.success) {
-                // 1. Lấy thêm trường role từ data
-                const { token, name, role } = response.data.data;
+                const { token, name, role: userRole } = response.data.data;
+                
+                // Lưu thông tin vào AuthContext
+                login({ access_token: token, name, role: userRole });
 
-                // 2. Lưu vào AuthContext (đảm bảo hàm login của bạn nhận đủ các tham số này)
-                login(token, name, role);
-
-                // 3. Logic chuyển hướng thông minh dựa trên Role
+                // Logic điều hướng sau khi đăng nhập thành công
                 if (from !== '/') {
-                    // Nếu người dùng đang cố truy cập một trang cụ thể trước đó
+                    // Nếu người dùng bị chặn từ một trang cụ thể, quay lại trang đó
                     navigate(from, { replace: true });
                 } else {
-                    // Nếu đăng nhập bình thường từ trang chủ, chuyển hướng theo vai trò
-                    switch (role) {
-                        case 'owner':
-                            navigate('/owner-dashboard');
-                            break;
-                        case 'staff':
-                            navigate('/inventory');
-                            break;
-                        case 'admin':
-                            navigate('/admin/users');
-                            break;
-                        default:
-                            navigate('/');
+                    // Điều hướng dựa trên vai trò người dùng (Khớp với App.js)
+                    if (userRole === 'admin') {
+                        navigate('/admin/home', { replace: true });
+                    } else if (userRole === 'supplier') {
+                        navigate('/supplier/dashboard', { replace: true });
+                    } else if (userRole === 'customer') {
+                        navigate('/customer/dashboard', { replace: true });
+                    } else {
+                        navigate('/', { replace: true });
                     }
                 }
             }
         } catch (err) {
-            setError(err.response?.data?.message || 'Đăng nhập thất bại. Vui lòng kiểm tra Server.');
+            setError(err.response?.data?.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.');
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div style={{
-            minHeight: '100vh',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: '#f3f4f6',
-            padding: '2rem'
-        }}>
-            <div style={{
-                backgroundColor: 'white',
-                padding: '3rem',
-                borderRadius: '16px',
-                boxShadow: '0 25px 50px rgba(0,0,0,0.15)',
-                width: '100%',
-                maxWidth: '400px'
-            }}>
-                {/* Logo + Title */}
-                <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-                    <div style={{
-                        width: '64px', height: '64px',
-                        backgroundColor: '#4f46e5',
-                        borderRadius: '16px',
-                        margin: '0 auto 1.5rem',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center'
-                    }}>
-                        <svg style={{ width: '28px', height: '28px', color: 'white' }}
-                            fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-4V7m8 10v-2a2 2 0 00-2-2H6a2 2 0 00-2 2v2" />
-                        </svg>
+        <div style={styles.pageContainer}>
+            <div style={styles.mainCard}>
+                {/* CỘT TRÁI - BRANDING */}
+                <div style={styles.leftSection}>
+                    <div style={styles.leftOverlay}>
+                        <div style={styles.brandBox}>
+                            <h2 style={styles.brandName}>THE ESTATE</h2>
+                            <p style={styles.brandSub}>Hệ Thống Quản Trị Logistics</p>
+                        </div>
+                        
+                        <div style={styles.bottomHero}>
+                            <p style={styles.heroText}>Nâng tầm giá trị chuỗi cung ứng cà phê.</p>
+                            <div style={styles.heroDivider}></div>
+                            <p style={styles.heroLink}>TRUY CẬP NỘI BỘ</p>
+                        </div>
                     </div>
-                    <h2 style={{
-                        fontSize: '2rem',
-                        fontWeight: 'bold',
-                        color: '#111827',
-                        marginBottom: '0.5rem'
-                    }}>
-                        Đăng nhập Kho hàng
-                    </h2>
-                    <p style={{ color: '#6b7280' }}>
-                        admin@kho.com / password123
-                    </p>
                 </div>
 
-                {/* Error Message */}
-                {error && (
-                    <div style={{
-                        backgroundColor: '#fee2e2',
-                        border: '1px solid #fecaca',
-                        color: '#dc2626',
-                        padding: '1rem',
-                        borderRadius: '8px',
-                        marginBottom: '1.5rem',
-                        fontSize: '0.875rem'
-                    }}>
-                        {error}
+                {/* CỘT PHẢI - FORM ĐĂNG NHẬP */}
+                <div style={styles.rightSection}>
+                    <div style={styles.formContent}>
+                        <p style={styles.labelTitle}>LỰA CHỌN VAI TRÒ</p>
+                        <div style={styles.roleSwitcher}>
+                            {['admin', 'supplier', 'customer'].map((r) => (
+                                <button
+                                    key={r}
+                                    type="button"
+                                    onClick={() => {
+                                        setRole(r);
+                                        setEmail(emailPresets[r]);
+                                        setPassword('password123');
+                                    }}
+                                    style={{
+                                        ...styles.roleBtn,
+                                        backgroundColor: role === r ? '#FFF' : 'transparent',
+                                        boxShadow: role === r ? '0 2px 4px rgba(0,0,0,0.05)' : 'none'
+                                    }}
+                                >
+                                    {r === 'admin' ? 'Quản Trị Viên' : r === 'supplier' ? 'Nhà Cung Cấp' : 'Khách Hàng'}
+                                </button>
+                            ))}
+                        </div>
+
+                        <h3 style={styles.formHeader}>Đăng Nhập Hệ Thống</h3>
+                        <p style={styles.formSub}>Vui lòng nhập thông tin để quản lý danh mục tài sản của bạn.</p>
+
+                        {error && <div style={styles.errorAlert}>{error}</div>}
+
+                        <form onSubmit={handleSubmit} style={styles.form}>
+                            <div style={styles.inputBox}>
+                                <label style={styles.inputLabel}>EMAIL ĐĂNG KÝ</label>
+                                <div style={styles.inputWrapper}>
+                                    <span style={styles.inputIcon}>@</span>
+                                    <input 
+                                        type="email" 
+                                        style={styles.inputField} 
+                                        placeholder="ten@estate.supply"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        required 
+                                    />
+                                </div>
+                            </div>
+
+                            <div style={styles.inputBox}>
+                                <div style={{display: 'flex', justifyContent: 'space-between'}}>
+                                    <label style={styles.inputLabel}>MẬT MÃ BẢO MẬT</label>
+                                    <Link to="/forgot-password" style={styles.forgotLink}>QUÊN?</Link>
+                                </div>
+                                <div style={styles.inputWrapper}>
+                                    <span style={styles.inputIcon}>🔒</span>
+                                    <input 
+                                        type="password" 
+                                        style={styles.inputField} 
+                                        placeholder="••••••••"
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        required 
+                                    />
+                                </div>
+                            </div>
+
+                            <div style={styles.checkboxWrapper}>
+                                <input type="checkbox" id="remember" />
+                                <label htmlFor="remember" style={styles.checkboxLabel}>Duy trì đăng nhập</label>
+                            </div>
+
+                            <button type="submit" disabled={loading} style={styles.submitBtn}>
+                                {loading ? 'ĐANG XỬ LÝ...' : 'XÁC THỰC →'}
+                            </button>
+                        </form>
+
+                        <div style={styles.footerInfo}>
+                            <p>GIAO DIỆN CHUỖI CUNG ỨNG MÃ HÓA V4.2</p>
+                            <div style={styles.socialIcons}>🛡️ 🔒 🌐</div>
+                            <Link to="/register" style={styles.registerLink}>Chưa có tài khoản? Đăng ký ngay</Link>
+                        </div>
                     </div>
-                )}
-
-                {/* Login Form */}
-                <form onSubmit={handleSubmit}>
-                    {/* Email Input */}
-                    <div style={{ marginBottom: '1.5rem' }}>
-                        <label style={{
-                            display: 'block',
-                            marginBottom: '0.5rem',
-                            fontWeight: '500',
-                            color: '#374151'
-                        }}>
-                            Email
-                        </label>
-                        <input
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            onFocus={(e) => e.target.style.borderColor = '#4f46e5'}
-                            onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
-                            style={{
-                                width: '100%',
-                                padding: '0.75rem 1rem',
-                                // border: '1px solid #d1d5db',
-                                borderRadius: '8px',
-                                fontSize: '1rem',
-                                transition: 'border-color 0.2s, box-shadow 0.2s',
-                                
-                                outline: 'none',
-                                border: '1px solid #d1d5db', 
-                            }}
-                            placeholder="admin@kho.com"
-                            required
-                            disabled={loading}
-                        />
-                    </div>
-
-                    {/* Password Input */}
-                    <div style={{ marginBottom: '2rem' }}>
-                        <label style={{
-                            display: 'block',
-                            marginBottom: '0.5rem',
-                            fontWeight: '500',
-                            color: '#374151'
-                        }}>
-                            Mật khẩu
-                        </label>
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            style={{
-                                width: '100%',
-                                padding: '0.75rem 1rem',
-                                border: '1px solid #d1d5db',
-                                borderRadius: '8px',
-                                fontSize: '1rem',
-                                transition: 'border-color 0.2s, box-shadow 0.2s',
-                                outline: 'none'
-                            }}
-                            placeholder="password123"
-                            required
-                            disabled={loading}
-                        />
-                    </div>
-
-                    {/* Submit Button */}
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        style={{
-                            width: '100%',
-                            padding: '1rem',
-                            backgroundColor: loading ? '#9ca3af' : '#4f46e5',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '8px',
-                            fontSize: '1rem',
-                            fontWeight: '500',
-                            cursor: loading ? 'not-allowed' : 'pointer',
-                            transition: 'all 0.2s'
-                        }}
-                    >
-                        {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
-                    </button>
-                </form>
-
-                {/* 💡 THÊM LIÊN KẾT ĐĂNG KÝ MỚI */}
-                <p style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.9rem', color: '#6b7280' }}>
-                    Chưa có tài khoản?
-                    <Link to="/register" style={{ color: '#4f46e5', textDecoration: 'none', fontWeight: '600', marginLeft: '5px' }}>
-                        Đăng ký ngay
-                    </Link>
-                </p>
-
-                {/* Demo Credentials */}
-                <div style={{
-                    marginTop: '1.5rem',
-                    padding: '1rem',
-                    backgroundColor: '#f8fafc',
-                    borderRadius: '8px',
-                    textAlign: 'center',
-                    fontSize: '0.875rem',
-                    color: '#6b7280'
-                }}>
-                    <strong>Demo:</strong> admin@kho.com / password123
                 </div>
             </div>
         </div>
     );
+};
+
+// CSS-in-JS Styles (Giữ nguyên phong cách của bạn)
+const styles = {
+    pageContainer: {
+        height: '100vh',
+        width: '100vw',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#F9F4F0',
+        fontFamily: "'Segoe UI', Roboto, sans-serif",
+    },
+    mainCard: {
+        width: '1000px',
+        height: '650px',
+        display: 'flex',
+        backgroundColor: '#FFF',
+        boxShadow: '0 40px 100px rgba(0,0,0,0.1)',
+        borderRadius: '8px',
+        overflow: 'hidden',
+    },
+    leftSection: {
+        flex: 1,
+        backgroundImage: 'url("https://images.unsplash.com/photo-1559056199-641a0ac8b55e?q=80&w=2070&auto=format&fit=crop")',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        position: 'relative',
+    },
+    leftOverlay: {
+        position: 'absolute',
+        top: 0, left: 0, right: 0, bottom: 0,
+        backgroundColor: 'rgba(44, 27, 18, 0.7)', 
+        padding: '50px',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        color: '#FFF',
+    },
+    brandName: { letterSpacing: '3px', fontWeight: 'bold', margin: 0 },
+    brandSub: { fontSize: '13px', opacity: 0.8 },
+    heroText: { fontSize: '18px', fontWeight: '600', marginBottom: '10px' },
+    heroDivider: { width: '40px', height: '2px', backgroundColor: '#8B5E3C', marginBottom: '15px' },
+    heroLink: { fontSize: '14px', letterSpacing: '2px', fontWeight: 'bold' },
+    
+    rightSection: {
+        flex: 1,
+        padding: '50px',
+        display: 'flex',
+        alignItems: 'center',
+    },
+    formContent: { width: '100%' },
+    labelTitle: { fontSize: '10px', fontWeight: 'bold', color: '#A89485', letterSpacing: '1px', marginBottom: '15px' },
+    roleSwitcher: {
+        display: 'flex',
+        backgroundColor: '#F2E8DF',
+        padding: '4px',
+        borderRadius: '4px',
+        marginBottom: '40px',
+    },
+    roleBtn: {
+        flex: 1,
+        border: 'none',
+        padding: '8px 5px',
+        fontSize: '11px',
+        fontWeight: 'bold',
+        color: '#5C4033',
+        borderRadius: '3px',
+        cursor: 'pointer',
+        transition: '0.3s',
+    },
+    formHeader: { fontSize: '20px', color: '#2C1B12', margin: '0 0 10px 0' },
+    formSub: { fontSize: '13px', color: '#8E7F77', marginBottom: '30px', lineHeight: '1.5' },
+    inputBox: { marginBottom: '20px' },
+    inputLabel: { fontSize: '12px', fontWeight: 'bold', color: '#5C4033', marginBottom: '8px', display: 'block' },
+    inputWrapper: {
+        display: 'flex',
+        alignItems: 'center',
+        backgroundColor: '#EDE0D4',
+        borderRadius: '4px',
+        padding: '0 15px',
+    },
+    inputIcon: { color: '#8E7F77', marginRight: '10px' },
+    inputField: {
+        flex: 1,
+        border: 'none',
+        backgroundColor: 'transparent',
+        padding: '12px 0',
+        outline: 'none',
+        color: '#2C1B12',
+    },
+    forgotLink: { fontSize: '10px', fontWeight: 'bold', color: '#2C1B12', cursor: 'pointer' },
+    checkboxWrapper: { display: 'flex', alignItems: 'center', marginBottom: '25px', gap: '8px' },
+    checkboxLabel: { fontSize: '12px', color: '#8E7F77' },
+    submitBtn: {
+        width: '100%',
+        padding: '15px',
+        backgroundColor: '#3D2B1F',
+        color: '#FFF',
+        border: 'none',
+        borderRadius: '4px',
+        fontWeight: 'bold',
+        cursor: 'pointer',
+        letterSpacing: '1px',
+    },
+    footerInfo: { marginTop: '40px', textAlign: 'center', fontSize: '10px', color: '#A89485' },
+    socialIcons: { margin: '10px 0', fontSize: '14px', opacity: 0.6 },
+    registerLink: { color: '#3D2B1F', textDecoration: 'none', display: 'block', marginTop: '10px', fontWeight: 'bold', fontSize: '12px' },
+    errorAlert: { padding: '10px', backgroundColor: '#fde8e8', color: '#c81e1e', borderRadius: '4px', fontSize: '12px', marginBottom: '15px' }
 };
 
 export default LoginPage;
