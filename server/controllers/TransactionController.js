@@ -1,229 +1,154 @@
-// server/controllers/TransactionController.js
-
 const Transaction = require('../models/Transaction');
-const Product = require('../models/Product'); 
+const Product = require('../models/Product');
 
 /**
- * @desc    Tạo một Giao dịch (Nhập hoặc Xuất kho)
- * @route   POST /api/transactions
+ * @desc    Tạo một Giao dịch mới (Nhập/Xuất) và đẩy vào Portal Nhà cung cấp
+ * @route   POST /api/transactions
  */
 exports.createTransaction = async (req, res) => {
     try {
-        // 🚨 NHẬN ĐẦY ĐỦ TRƯỜNG DỮ LIỆU TỪ FRONTEND ĐÃ SỬA
-        const { productId, type, quantity, note, costPrice } = req.body; 
-        
+        const { productId, type, quantity, note, costPrice } = req.body;
+
         const numQuantity = parseFloat(quantity);
-        const numCostPrice = parseFloat(costPrice) || 0; // Giá vốn phải là số
+        const numCostPrice = parseFloat(costPrice) || 0;
 
-        // Validation cơ bản
+        // 1. Kiểm tra dữ liệu đầu vào
         if (!productId || !type || isNaN(numQuantity) || numQuantity <= 0) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Vui lòng cung cấp đầy đủ thông tin: ID sản phẩm, loại giao dịch, và số lượng hợp lệ (> 0).' 
-            });
-        }
-        
-        // Validation: Cần giá vốn khi nhập
-        if (type === 'in' && numCostPrice <= 0) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Khi nhập kho, giá vốn phải lớn hơn 0.' 
+            return res.status(400).json({
+                success: false,
+                message: 'Vui lòng cung cấp đầy đủ: Sản phẩm, Loại giao dịch và Số lượng.'
             });
         }
 
-        // 1. Tìm Sản phẩm
-        const existingProduct = await Product.findById(productId); 
+        // 2. Tìm sản phẩm và lấy thông tin Nhà cung cấp (Supplier)
+        const existingProduct = await Product.findById(productId).populate('supplier');
 
         if (!existingProduct) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'Không tìm thấy Sản phẩm này để thực hiện giao dịch.' 
-            });
+            return res.status(404).json({ success: false, message: 'Sản phẩm không tồn tại.' });
         }
 
-        // 2. Tính toán Tồn kho mới
+        // 3. Logic xử lý kho và giá vốn
         let newStock;
         let oldCostPrice = existingProduct.costPrice || 0;
 
         if (type === 'in') {
+            if (numCostPrice <= 0) return res.status(400).json({ success: false, message: 'Giá vốn nhập kho phải > 0.' });
+            
             newStock = existingProduct.stockQuantity + numQuantity;
+            
+            // Tính giá vốn trung bình di động
+            const oldTotalValue = (existingProduct.stockQuantity || 0) * oldCostPrice;
+            const incomingValue = numQuantity * numCostPrice;
+            existingProduct.costPrice = (oldTotalValue + incomingValue) / newStock;
+            
         } else if (type === 'out') {
             newStock = existingProduct.stockQuantity - numQuantity;
-            
-            if (newStock < 0) {
-                return res.status(400).json({ 
-                    success: false, 
-                    message: `Lỗi: Không đủ hàng trong kho. Tồn kho hiện tại: ${existingProduct.stockQuantity}` 
-                });
-            }
+            if (newStock < 0) return res.status(400).json({ success: false, message: `Kho không đủ hàng (Hiện có: ${existingProduct.stockQuantity}).` });
         } else {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Loại giao dịch không hợp lệ. Phải là "in" hoặc "out".' 
-            });
+            return res.status(400).json({ success: false, message: 'Loại giao dịch không hợp lệ.' });
         }
 
-        // 3. Cập nhật số lượng Tồn kho của Sản phẩm VÀ GIÁ VỐN
-        
-        if (type === 'in') {
-            // 💡 TÍNH GIÁ VỐN TRUNG BÌNH KHI NHẬP KHO
-            const oldTotalValue = (existingProduct.stockQuantity || 0) * (oldCostPrice || 0);
-            const incomingValue = numQuantity * numCostPrice;
-            const newTotalStock = (existingProduct.stockQuantity || 0) + numQuantity;
-            
-            if (newTotalStock > 0) {
-                // Công thức giá vốn trung bình di động: (Tổng giá trị cũ + Tổng giá trị mới nhập) / Tổng số lượng mới
-                existingProduct.costPrice = (oldTotalValue + incomingValue) / newTotalStock; 
-            } else {
-                existingProduct.costPrice = numCostPrice; // Trường hợp nhập lô hàng đầu tiên
-            }
-            existingProduct.stockQuantity = newStock;
-            
-        } else if (type === 'out') {
-            // Logic XUẤT KHO: Cập nhật tồn kho
-            existingProduct.stockQuantity = newStock;
-        }
-        
-        // Lưu lại sản phẩm đã cập nhật
-        try {
-            await existingProduct.save(); 
-        } catch (saveError) {
-            console.error('Error saving product:', saveError);
-            return res.status(500).json({ 
-                success: false, 
-                message: 'Lỗi khi cập nhật sản phẩm: ' + saveError.message 
-            });
-        }
+        // Cập nhật tồn kho sản phẩm
+        existingProduct.stockQuantity = newStock;
+        await existingProduct.save();
 
-        // 4. Ghi lại Giao dịch vào Database (Tạo Transaction)
-        let transaction;
-        try {
-            transaction = await Transaction.create({
-                product: productId, 
-                type,
-                quantity: numQuantity,
-                // 💡 Dùng giá vốn ĐÃ LƯU TRONG SẢN PHẨM để ghi lại giá vốn của giao dịch
-                price: type === 'in' ? numCostPrice : oldCostPrice, // Lưu giá nhập (in) hoặc giá vốn cũ (out)
-                notes: note || '' 
-            }); 
-        } catch (txError) {
-            console.error('Error creating transaction:', txError);
-            return res.status(500).json({ 
-                success: false, 
-                message: 'Lỗi khi tạo giao dịch: ' + txError.message 
-            });
-        } 
+        // 4. Tạo mã đơn yêu cầu (Khớp với giao diện ROASTLOGIC bạn gửi)
+        // Định dạng: REQ - Năm hiện tại - Số ngẫu nhiên
+        const requestId = `REQ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-        res.status(201).json({ 
-            success: true, 
-            message: `Giao dịch ${type === 'in' ? 'nhập' : 'xuất'} kho thành công. Tồn kho mới: ${newStock}`, 
-            data: transaction 
+        // 5. Ghi lại giao dịch vào Database
+        // Nếu là 'in' (nhập kho), nó sẽ tự động có trạng thái PENDING để NCC phê duyệt
+        const transaction = await Transaction.create({
+            product: productId,
+            supplier: existingProduct.supplier ? existingProduct.supplier._id : null,
+            type,
+            quantity: numQuantity,
+            price: type === 'in' ? numCostPrice : oldCostPrice,
+            notes: note || '',
+            requestId: requestId, // Mã hiển thị trên Portal
+            status: type === 'in' ? 'PENDING' : 'COMPLETED' // 'in' thì chờ duyệt, 'out' thì hoàn thành luôn
+        });
+
+        res.status(201).json({
+            success: true,
+            message: type === 'in' 
+                ? `Yêu cầu nhập hàng ${requestId} đã được gửi tới Nhà cung cấp!` 
+                : 'Xuất kho thành công.',
+            data: transaction
         });
 
     } catch (error) {
-        console.error('Lỗi server khi tạo giao dịch:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Thực hiện giao dịch thất bại.', 
-            error: error.message 
+        console.error('Lỗi TransactionController:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Thực hiện giao dịch thất bại.',
+            error: error.message
         });
     }
 };
 
 /**
- * @desc    Lấy tất cả các Giao dịch
- * @route   GET /api/transactions
+ * @desc    Lấy tất cả các Giao dịch (Có lọc theo Nhà cung cấp nếu cần)
+ * @route   GET /api/transactions
  */
 exports.getTransactions = async (req, res) => {
     try {
-        const transactions = await Transaction.find()
-            // Populate (điền đầy đủ) thông tin sản phẩm cần thiết cho hiển thị
+        // Nếu là Nhà cung cấp đăng nhập, chỉ hiện giao dịch của họ
+        let query = {};
+        if (req.user && req.user.role === 'supplier') {
+            query.supplier = req.user.supplierId;
+        }
+
+        const transactions = await Transaction.find(query)
             .populate({
                 path: 'product',
-                select: 'name sku unit stockQuantity supplier',
-                populate: {
-                    path: 'supplier',
-                    select: 'name'
-                }
+                select: 'name sku unit stockQuantity',
+                populate: { path: 'supplier', select: 'name' }
             })
             .sort({ createdAt: -1 })
-            .lean(); 
+            .lean();
 
-        const processedTransactions = transactions.map(t => ({
+        const processedData = transactions.map(t => ({
             ...t,
-            // Đảm bảo tên sản phẩm được hiển thị (tránh lỗi nếu product là null)
-            productName: t.product ? t.product.name : 'Sản phẩm đã bị xóa',
-            // Đảm bảo tồn kho được hiển thị
-            stockQuantity: t.product ? t.product.stockQuantity : 0,
-            // Thêm thông tin vendor từ supplier
-            vendor: t.product?.supplier?.name || null
+            productName: t.product ? t.product.name : 'N/A',
+            sku: t.product ? t.product.sku : 'N/A',
+            vendor: t.product?.supplier?.name || 'Hệ thống',
+            totalValue: t.quantity * t.price
         }));
-
-        res.status(200).json({ 
-            success: true, 
-            count: processedTransactions.length, 
-            data: processedTransactions 
-        });
-    } catch (error) {
-        res.status(500).json({ 
-            success: false, 
-            message: 'Lấy lịch sử giao dịch thất bại.', 
-            error: error.message 
-        });
-    }
-};
-
-// ... (Các hàm khác nếu có, ví dụ: exports.getInventoryReport)
-/**
- * @desc    Lấy Báo cáo Tổng Giá trị Tồn kho
- * @route   GET /api/reports/inventory-value
- * @access  Public (Tạm thời, có thể bảo vệ sau)
- */
-exports.getInventoryReport = async (req, res) => {
-    try {
-        // Sử dụng Mongoose Aggregation để tính toán
-        const report = await Product.aggregate([
-            {
-                // Chỉ lấy các sản phẩm có tồn kho > 0
-                $match: { stockQuantity: { $gt: 0 } }
-            },
-            {
-                // Tính toán giá trị hàng tồn kho cho mỗi sản phẩm: stockQuantity * costPrice
-                $addFields: {
-                    inventoryValue: { $multiply: ["$stockQuantity", "$costPrice"] }
-                }
-            },
-            {
-                // Nhóm tất cả các kết quả lại và tính tổng giá trị tồn kho
-                $group: {
-                    _id: null, // Nhóm tất cả thành một kết quả duy nhất
-                    totalProducts: { $sum: 1 }, // Đếm tổng số loại sản phẩm có hàng
-                    totalInventoryValue: { $sum: "$inventoryValue" } // Tính tổng giá trị
-                }
-            },
-            {
-                // Định dạng lại kết quả đầu ra
-                $project: {
-                    _id: 0, // Bỏ trường _id
-                    totalProducts: 1,
-                    totalInventoryValue: 1
-                }
-            }
-        ]);
-
-        // Nếu không có sản phẩm nào trong kho, trả về 0
-        const result = report.length > 0 ? report[0] : { totalProducts: 0, totalInventoryValue: 0 };
 
         res.status(200).json({
             success: true,
-            message: 'Lấy báo cáo tổng giá trị tồn kho thành công.',
-            data: result
+            count: processedData.length,
+            data: processedData
         });
     } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: 'Lỗi server khi tạo báo cáo tồn kho.',
-            error: error.message
+        res.status(500).json({ success: false, message: 'Lỗi tải lịch sử giao dịch.' });
+    }
+};
+
+/**
+ * @desc    Báo cáo tổng giá trị kho (Aggregration)
+ */
+exports.getInventoryReport = async (req, res) => {
+    try {
+        const report = await Product.aggregate([
+            { $match: { stockQuantity: { $gt: 0 } } },
+            { $addFields: { inventoryValue: { $multiply: ["$stockQuantity", "$costPrice"] } } },
+            {
+                $group: {
+                    _id: null,
+                    totalProducts: { $sum: 1 },
+                    totalInventoryValue: { $sum: "$inventoryValue" }
+                }
+            },
+            { $project: { _id: 0, totalProducts: 1, totalInventoryValue: 1 } }
+        ]);
+
+        res.status(200).json({
+            success: true,
+            data: report.length > 0 ? report[0] : { totalProducts: 0, totalInventoryValue: 0 }
         });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Lỗi tạo báo cáo.' });
     }
 };

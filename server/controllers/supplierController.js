@@ -1,106 +1,123 @@
-// server/controllers/supplierController.js
-
 const asyncHandler = require('express-async-handler');
 const Supplier = require('../models/Supplier');
+const Transaction = require('../models/Transaction');
+
+// @desc    Lấy tất cả Nhà cung cấp (Dùng cho Dropdown)
+// @route   GET /api/suppliers
+// @access  Public (Nên để public để dropdown luôn có dữ liệu)
+const getSuppliers = asyncHandler(async (req, res) => {
+    // Chỉ lấy các trường cần thiết để dropdown nhẹ hơn
+    const suppliers = await Supplier.find({}).sort({ name: 1 });
+
+    res.status(200).json({
+        success: true,
+        data: suppliers || [] 
+    });
+});
 
 // @desc    Tạo Nhà cung cấp mới
-// @route   POST /api/suppliers
-// @access  Private
 const createSupplier = asyncHandler(async (req, res) => {
     const { name, contactName, phone, email, address } = req.body;
 
-    // Kiểm tra tên NCC đã tồn tại chưa
-    const supplierExists = await Supplier.findOne({ name });
+    if (!name) {
+        res.status(400);
+        throw new Error('Vui lòng nhập tên nhà cung cấp');
+    }
+
+    const supplierExists = await Supplier.findOne({ 
+        name: { $regex: new RegExp(`^${name.trim()}$`, 'i') } 
+    });
 
     if (supplierExists) {
         res.status(400);
-        throw new Error('Nhà cung cấp đã tồn tại trong hệ thống');
+        throw new Error('Nhà cung cấp này đã tồn tại');
     }
 
     const supplier = await Supplier.create({
-        name,
+        name: name.trim(),
         contactName,
         phone,
         email,
         address,
     });
 
-    if (supplier) {
-        res.status(201).json({
-            success: true,
-            data: supplier,
-            message: 'Tạo nhà cung cấp thành công',
-        });
-    } else {
-        res.status(400);
-        throw new Error('Dữ liệu nhà cung cấp không hợp lệ');
-    }
-});
-
-// @desc    Lấy tất cả Nhà cung cấp
-// @route   GET /api/suppliers
-// @access  Private
-const getSuppliers = asyncHandler(async (req, res) => {
-    const suppliers = await Supplier.find({}).sort({ name: 1 });
-    res.json({
+    res.status(201).json({
         success: true,
-        count: suppliers.length,
-        data: suppliers,
+        data: supplier,
+        message: 'Tạo thành công'
     });
 });
 
 // @desc    Cập nhật Nhà cung cấp
-// @route   PUT /api/suppliers/:id
-// @access  Private
 const updateSupplier = asyncHandler(async (req, res) => {
     const supplier = await Supplier.findById(req.params.id);
 
-    if (supplier) {
-        // Kiểm tra tên mới có trùng với NCC khác không (nếu có thay đổi)
-        if (req.body.name && req.body.name !== supplier.name) {
-            const nameExists = await Supplier.findOne({ name: req.body.name });
-            if (nameExists) {
-                res.status(400);
-                throw new Error('Tên nhà cung cấp đã tồn tại trong hệ thống');
-            }
-        }
-
-        supplier.name = req.body.name || supplier.name;
-        supplier.contactName = req.body.contactName || supplier.contactName;
-        supplier.phone = req.body.phone || supplier.phone;
-        supplier.email = req.body.email || supplier.email;
-        supplier.address = req.body.address || supplier.address;
-
-        const updatedSupplier = await supplier.save();
-        res.json({
-            success: true,
-            data: updatedSupplier,
-            message: 'Cập nhật nhà cung cấp thành công',
-        });
-    } else {
+    if (!supplier) {
         res.status(404);
         throw new Error('Không tìm thấy Nhà cung cấp');
     }
+
+    // Kiểm tra trùng tên khi sửa (trừ chính nó)
+    if (req.body.name && req.body.name !== supplier.name) {
+        const nameExists = await Supplier.findOne({ name: req.body.name });
+        if (nameExists) {
+            res.status(400);
+            throw new Error('Tên nhà cung cấp đã tồn tại');
+        }
+    }
+
+    const updatedSupplier = await Supplier.findByIdAndUpdate(
+        req.params.id,
+        req.body,
+        { new: true, runValidators: true }
+    );
+
+    res.json({
+        success: true,
+        data: updatedSupplier,
+        message: 'Cập nhật thành công'
+    });
 });
 
 // @desc    Xóa Nhà cung cấp
-// @route   DELETE /api/suppliers/:id
-// @access  Private
 const deleteSupplier = asyncHandler(async (req, res) => {
     const supplier = await Supplier.findById(req.params.id);
-
-    if (supplier) {
-        await Supplier.deleteOne({ _id: req.params.id });
-        res.json({ message: 'Xóa nhà cung cấp thành công' });
-    } else {
+    if (!supplier) {
         res.status(404);
-        throw new Error('Không tìm thấy Nhà cung cấp');
+        throw new Error('Không tìm thấy đối tác');
     }
+
+    // Kiểm tra ràng buộc sản phẩm và giao dịch
+    const Product = require('../models/Product');
+    const [hasProducts, hasTransactions] = await Promise.all([
+        Product.findOne({ supplier: req.params.id }),
+        Transaction.findOne({ supplier: req.params.id })
+    ]);
+
+    if (hasProducts || hasTransactions) {
+        res.status(400);
+        throw new Error('Không thể xóa: Nhà cung cấp này đã có dữ liệu sản phẩm hoặc đơn hàng');
+    }
+
+    await supplier.deleteOne();
+    res.json({ success: true, message: 'Đã xóa nhà cung cấp' });
+});
+
+// Giữ lại hàm portal nếu bạn có làm trang riêng cho Supplier
+const getSupplierOrders = asyncHandler(async (req, res) => {
+    const supplierId = req.user.supplierId; 
+    if (!supplierId) {
+        res.status(400);
+        throw new Error('Tài khoản không liên kết NCC');
+    }
+    const orders = await Transaction.find({ supplier: supplierId }).populate('product');
+    res.json({ success: true, data: orders });
 });
 
 module.exports = {
     createSupplier,
     getSuppliers,
+    getSupplierOrders,
     updateSupplier,
     deleteSupplier,
 };

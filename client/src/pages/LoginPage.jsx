@@ -30,22 +30,27 @@ const LoginPage = () => {
         setLoading(true);
 
         try {
-            // Gửi yêu cầu đăng nhập đến API backend
-            const response = await axios.post('/api/auth/login', { email, password, role });
+            // 1. Gọi API (Lưu ý: Nếu port khác 5000 hãy thêm đầy đủ URL)
+            const response = await axios.post('http://localhost:5000/api/auth/login', { 
+                email, 
+                password 
+            });
 
-            if (response.data.success) {
-                const { token, name, role: userRole } = response.data.data;
+            // 2. Kiểm tra phản hồi dựa trên authController.js của bạn
+            if (response.data && response.data.success) {
+                const userData = response.data.data; // Chứa { token, name, role, _id }
                 
-                // Lưu thông tin vào AuthContext
-                login({ access_token: token, name, role: userRole });
+                // 3. Đưa dữ liệu vào AuthContext (Sử dụng 'token' thay vì 'access_token')
+                login(userData);
 
-                // Logic điều hướng sau khi đăng nhập thành công
+                // 4. Logic điều hướng sau khi đăng nhập thành công
+                const userRole = userData.role;
+
                 if (from !== '/') {
-                    // Nếu người dùng bị chặn từ một trang cụ thể, quay lại trang đó
                     navigate(from, { replace: true });
                 } else {
-                    // Điều hướng dựa trên vai trò người dùng (Khớp với App.js)
-                    if (userRole === 'admin') {
+                    // Điều hướng dựa trên vai trò thực tế từ Backend trả về
+                    if (userRole === 'admin' || userRole === 'manager') {
                         navigate('/admin/home', { replace: true });
                     } else if (userRole === 'supplier') {
                         navigate('/supplier/dashboard', { replace: true });
@@ -57,6 +62,7 @@ const LoginPage = () => {
                 }
             }
         } catch (err) {
+            // Lấy message lỗi từ backend (Ví dụ: "Tài khoản không tồn tại")
             setError(err.response?.data?.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.');
         } finally {
             setLoading(false);

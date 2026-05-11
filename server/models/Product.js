@@ -6,65 +6,44 @@ const ProductSchema = mongoose.Schema(
         name: {
             type: String,
             required: [true, 'Tên sản phẩm là bắt buộc'],
-            unique: true, 
             trim: true,
         },
         sku: {
             type: String,
             required: [true, 'Mã SKU là bắt buộc'],
-            unique: true, 
             trim: true,
         },
         description: {
             type: String,
             trim: true,
         },
-        
-        // --- LIÊN KẾT VỚI LOẠI SẢN PHẨM ---
+        image: {
+            type: String,
+            default: 'https://via.placeholder.com/150', 
+        },
         category: {
-            type: mongoose.Schema.Types.ObjectId, // Lưu trữ ID của Category
-            ref: 'Category', // Tên model phải khớp chính xác với mongoose.model('Category', ...)
+            type: String,
             required: false,
         },
-
-        // --- BỔ SUNG: LIÊN KẾT VỚI NHÀ CUNG CẤP ---
         supplier: {
-            type: mongoose.Schema.Types.ObjectId, // Lưu trữ ID của Supplier
-            ref: 'Supplier', // Tên model phải khớp chính xác với mongoose.model('Supplier', ...)
+            type: String,
             required: false,
         },
-
-        costPrice: {
-            type: Number,
-            required: false, 
-            default: 0,
-            min: [0, 'Giá nhập không thể âm'],
-        },
-        
         salePrice: {
             type: Number,
-            required: false, 
             default: 0,
-            min: [0, 'Giá bán không thể âm'],
         },
-        
+        costPrice: {
+            type: Number,
+            default: 0,
+        },
         stockQuantity: {
             type: Number,
-            required: false, 
-            default: 0, 
-            min: [0, 'Số lượng tồn kho không thể âm'],
+            default: 0, // Mặc định là 0 nếu form không có ô nhập số lượng
         },
-        
-        minimumStock: {
-            type: Number,
-            required: false,
-            default: 10,
-            min: [0, 'Tồn tối thiểu không thể âm'],
-        },
-        
         unit: {
             type: String,
-            required: [true, 'Đơn vị tính là bắt buộc'],
+            default: 'Cái', // Nếu form không có ô nhập đơn vị tính, BE sẽ tự điền 'Cái'
         },
     },
     {
@@ -73,5 +52,4 @@ const ProductSchema = mongoose.Schema(
 );
 
 const Product = mongoose.model('Product', ProductSchema);
-
 module.exports = Product;

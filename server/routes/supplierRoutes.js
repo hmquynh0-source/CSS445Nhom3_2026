@@ -1,22 +1,21 @@
-// server/routes/supplierRoutes.js
-
 const express = require('express');
-const {
-    createSupplier,
-    getSuppliers,
-    updateSupplier,
-    deleteSupplier,
-} = require('../controllers/supplierController');
-const { protect } = require('../middleware/authMiddleware'); // Đảm bảo bạn có middleware này
-
 const router = express.Router();
+const { protect } = require('../middleware/authMiddleware');
+const {
+    getSuppliers,
+    createSupplier,
+    updateSupplier,
+    deleteSupplier
+} = require('../controllers/supplierController');
 
+// GET: Công khai (để dropdown luôn có dữ liệu)
+// POST: Bảo vệ (chỉ admin mới được thêm)
 router.route('/')
-    .post(protect, createSupplier) // Yêu cầu đăng nhập để tạo
-    .get(protect, getSuppliers);   // Yêu cầu đăng nhập để lấy danh sách
+    .get(getSuppliers) 
+    .post(protect, createSupplier);
 
 router.route('/:id')
-    .put(protect, updateSupplier)  // Yêu cầu đăng nhập để cập nhật
-    .delete(protect, deleteSupplier); // Yêu cầu đăng nhập để xóa
+    .put(protect, updateSupplier)
+    .delete(protect, deleteSupplier);
 
 module.exports = router;

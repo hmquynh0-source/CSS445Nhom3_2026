@@ -1,11 +1,11 @@
 // server/controllers/categoryController.js
 
 const Category = require('../models/Category');
-const Product = require('../models/Product'); // Cần import Product để kiểm tra khi xóa
+const Product = require('../models/Product');
 
 // @desc    Tạo Loại sản phẩm mới
 // @route   POST /api/categories
-// @access  Private (Admin/User có quyền)
+// @access  Private
 exports.createCategory = async (req, res, next) => {
     try {
         const category = await Category.create(req.body);
@@ -15,11 +15,10 @@ exports.createCategory = async (req, res, next) => {
             data: category
         });
     } catch (error) {
-        // Xử lý lỗi trùng lặp tên
         if (error.code === 11000) {
             return res.status(400).json({ 
                 success: false, 
-                message: 'Tên loại sản phẩm đã tồn tại. Vui lòng chọn tên khác.' 
+                message: 'Tên loại sản phẩm đã tồn tại.' 
             });
         }
         res.status(500).json({ success: false, message: error.message });
@@ -28,25 +27,25 @@ exports.createCategory = async (req, res, next) => {
 
 // @desc    Lấy tất cả Loại sản phẩm
 // @route   GET /api/categories
-// @access  Private (Chỉ cần đăng nhập)
+// @access  Public/Private 
 exports.getCategories = async (req, res, next) => {
     try {
-        // Sắp xếp theo tên
+        // Sắp xếp theo tên A-Z
         const categories = await Category.find().sort({ name: 1 });
 
         res.status(200).json({
             success: true,
             count: categories.length,
-            data: categories
+            // Đảm bảo trả về mảng rỗng nếu không có data để tránh crash Frontend
+            data: categories || [] 
         });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Lỗi máy chủ khi lấy danh mục.' });
     }
 };
 
-// @desc    Cập nhật Loại sản phẩm theo ID
+// @desc    Cập nhật Loại sản phẩm
 // @route   PUT /api/categories/:id
-// @access  Private (Admin/User có quyền)
 exports.updateCategory = async (req, res, next) => {
     try {
         let category = await Category.findById(req.params.id);
@@ -56,8 +55,8 @@ exports.updateCategory = async (req, res, next) => {
         }
 
         category = await Category.findByIdAndUpdate(req.params.id, req.body, {
-            new: true, // Trả về đối tượng đã cập nhật
-            runValidators: true // Chạy lại các validation trong Schema
+            new: true,
+            runValidators: true 
         });
 
         res.status(200).json({
@@ -65,20 +64,18 @@ exports.updateCategory = async (req, res, next) => {
             data: category
         });
     } catch (error) {
-        // Xử lý lỗi trùng lặp tên
         if (error.code === 11000) {
             return res.status(400).json({ 
                 success: false, 
-                message: 'Tên loại sản phẩm đã tồn tại. Vui lòng chọn tên khác.' 
+                message: 'Tên loại sản phẩm này đã được sử dụng.' 
             });
         }
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-// @desc    Xóa Loại sản phẩm theo ID
+// @desc    Xóa Loại sản phẩm
 // @route   DELETE /api/categories/:id
-// @access  Private (Admin/User có quyền)
 exports.deleteCategory = async (req, res, next) => {
     try {
         const category = await Category.findById(req.params.id);
@@ -87,22 +84,23 @@ exports.deleteCategory = async (req, res, next) => {
             return res.status(404).json({ success: false, message: 'Không tìm thấy loại sản phẩm.' });
         }
         
-        // KIỂM TRA SẢN PHẨM LIÊN KẾT:
+        // KIỂM TRA RÀNG BUỘC: Không cho xóa nếu danh mục này đang chứa sản phẩm
         const relatedProductsCount = await Product.countDocuments({ category: req.params.id });
         if (relatedProductsCount > 0) {
             return res.status(400).json({ 
                 success: false, 
-                message: `Không thể xóa: Có ${relatedProductsCount} sản phẩm đang sử dụng loại này. Vui lòng cập nhật sản phẩm trước.` 
+                message: `Lỗi: Có ${relatedProductsCount} sản phẩm đang thuộc loại này. Không thể xóa.` 
             });
         }
 
-        await category.deleteOne(); // Sử dụng deleteOne() thay vì remove()
+        await category.deleteOne();
 
         res.status(200).json({
             success: true,
+            message: 'Đã xóa loại sản phẩm thành công',
             data: {}
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: 'Lỗi máy chủ khi xóa loại sản phẩm.' });
+        res.status(500).json({ success: false, message: 'Lỗi máy chủ khi xóa.' });
     }
 };
