@@ -1,27 +1,60 @@
-import React, { useState } from 'react';
-import { Check, X, MapPin, Package, Info, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Check, X, MapPin, Package, Info, ChevronRight, Loader2 } from 'lucide-react';
+import axios from 'axios';
 
 const SupplierApprovalPage = () => {
+    const [requests, setRequests] = useState([]);
     const [selectedReq, setSelectedReq] = useState(null);
+    const [loading, setLoading] = useState(true);
 
-    const requests = [
-        { id: 'REQ-2023-089', warehouse: 'Kho Trung tâm Đắk Lắk', date: '12/10/2023', value: '850.000.000', status: 'PENDING' },
-        { id: 'REQ-2023-090', warehouse: 'Kho Cầu Đất - Đà Lạt', date: '13/10/2023', value: '1.200.000.000', status: 'PENDING' },
-        { id: 'REQ-2023-091', warehouse: 'Kho Pleiku - Gia Lai', date: '14/10/2023', value: '940.500.000', status: 'REVIEWING' },
-        { id: 'REQ-2023-092', warehouse: 'Kho Bảo Lộc', date: '15/10/2023', value: '1.280.000.000', status: 'PENDING' },
-    ];
+    // --- LẤY DỮ LIỆU TỪ MONGODB ---
+    useEffect(() => {
+        const fetchRequests = async () => {
+            try {
+                const response = await axios.get('http://localhost:5000/api/supplier-requests');
+                setRequests(response.data);
+                setLoading(false);
+            } catch (error) {
+                console.error("Lỗi lấy dữ liệu:", error);
+                setLoading(false);
+            }
+        };
+        fetchRequests();
+    }, []);
+
+    // --- XỬ LÝ PHÊ DUYỆT ---
+    const handleApprove = async (id) => {
+        try {
+            const res = await axios.patch(`http://localhost:5000/api/supplier-requests/${id}/approve`);
+            if (res.data.success) {
+                alert("Phê duyệt thành công!");
+                // Cập nhật lại danh sách tại chỗ
+                setRequests(requests.map(r => r._id === id ? { ...r, status: 'APPROVED' } : r));
+                setSelectedReq(null);
+            }
+        } catch (error) {
+            alert("Lỗi khi phê duyệt!");
+        }
+    };
+
+    if (loading) return (
+        <div className="h-screen flex flex-col items-center justify-center bg-[#FDF8F1]">
+            <Loader2 className="animate-spin text-[#3D2B1F] mb-4" size={40} />
+            <p className="font-serif italic text-[#A89485]">Đang tải dữ liệu thẩm định...</p>
+        </div>
+    );
 
     return (
         <div className="max-w-[1400px] mx-auto p-8 animate-in fade-in duration-700">
-            {/* Header Header phong cách Tạp chí */}
+            {/* Header */}
             <div className="flex justify-between items-end mb-12 border-b border-[#EAE1D6] pb-8">
                 <div className="max-w-xl">
                     <h2 className="text-5xl font-serif text-[#3D2B1F] leading-tight mb-4">Phê duyệt yêu cầu nhập hàng</h2>
-                    <p className="text-[#A89485] text-sm italic font-medium">Thẩm định chi tiết các lô hàng nhân xanh chất lượng cao từ mạng lưới nông hộ đối tác.</p>
+                    <p className="text-[#A89485] text-sm italic font-medium">Thẩm định chi tiết các lô hàng nhân xanh chất lượng cao.</p>
                 </div>
                 <div className="flex gap-4">
-                    <StatBox label="Đang chờ duyệt" value="12" sub="Yêu cầu" />
-                    <StatBox label="Giá trị giải ngân dự kiến" value="4.280.500" sub="k VND" />
+                    <StatBox label="Đang chờ duyệt" value={requests.filter(r => r.status === 'PENDING').length} sub="Yêu cầu" />
+                    <StatBox label="Tổng giá trị" value={requests.reduce((sum, r) => sum + (r.totalPrice || 0), 0).toLocaleString()} sub="VND" />
                 </div>
             </div>
 
@@ -34,95 +67,76 @@ const SupplierApprovalPage = () => {
                         <div className="col-span-1">Giá trị</div>
                         <div className="col-span-1 text-right">Trạng thái</div>
                     </div>
+                    
                     {requests.map((req) => (
                         <div 
-                            key={req.id}
+                            key={req._id}
                             onClick={() => setSelectedReq(req)}
                             className={`group grid grid-cols-5 items-center p-8 rounded-2xl transition-all cursor-pointer ${
-                                selectedReq?.id === req.id ? 'bg-[#F3EDE4] shadow-sm' : 'hover:bg-[#F9F6F2]'
+                                selectedReq?._id === req._id ? 'bg-[#F3EDE4] shadow-sm' : 'hover:bg-[#F9F6F2]'
                             }`}
                         >
-                            <div className="text-xs font-bold text-[#3D2B1F]">{req.id}</div>
+                            <div className="text-xs font-bold text-[#3D2B1F]">{req.requestId || req._id.slice(-6).toUpperCase()}</div>
                             <div className="col-span-2 text-[11px] font-medium text-[#3D2B1F] leading-relaxed">
-                                {req.warehouse}
-                                <p className="text-[10px] text-[#A89485] mt-1 font-normal">{req.date}</p>
+                                {req.warehouseName || "Kho Tổng Hệ Thống"}
+                                <p className="text-[10px] text-[#A89485] mt-1 font-normal">
+                                    {new Date(req.createdAt).toLocaleDateString('vi-VN')}
+                                </p>
                             </div>
-                            <div className="text-xs font-black text-[#3D2B1F]">{req.value}</div>
+                            <div className="text-xs font-black text-[#3D2B1F]">
+                                {req.totalPrice?.toLocaleString()}
+                            </div>
                             <div className="flex justify-end">
                                 <span className={`text-[9px] font-black px-3 py-1 rounded-md uppercase tracking-tighter ${
-                                    req.status === 'REVIEWING' ? 'bg-[#F9F6F2] text-orange-600 border border-orange-200' : 'bg-[#F1F1F1] text-gray-500'
+                                    req.status === 'PENDING' ? 'bg-orange-50 text-orange-600 border border-orange-200' : 'bg-green-50 text-green-600 border border-green-200'
                                 }`}>
                                     {req.status}
                                 </span>
                             </div>
                         </div>
                     ))}
-                    
-                    {/* Minh họa bản đồ nhỏ phía dưới (như mẫu) */}
-                    <div className="mt-10 rounded-[2rem] overflow-hidden grayscale opacity-70 border border-[#EAE1D6] h-48 relative">
-                        <div className="absolute inset-0 flex items-center justify-center bg-[#3D2B1F]/10">
-                            <MapPin className="text-[#3D2B1F]" size={32} />
-                        </div>
-                        <div className="absolute bottom-4 left-4 bg-white/90 p-3 rounded-lg text-[10px] font-bold">
-                            ĐỊA ĐIỂM TIẾP NHẬN: LÔ Q2, KCN TRÀ ĐA, TP. PLEIKU, GIA LAI
-                        </div>
-                    </div>
                 </div>
 
-                {/* CHI TIẾT BÊN PHẢI (EDITORIAL SIDEBAR) */}
+                {/* CHI TIẾT BÊN PHẢI */}
                 <div className="col-span-5">
                     {selectedReq ? (
                         <div className="sticky top-8 bg-white border border-[#EAE1D6] rounded-[2.5rem] p-10 shadow-xl shadow-[#3D2B1F]/5 animate-in slide-in-from-right-8">
-                            <div className="flex justify-between items-start mb-8">
-                                <div>
-                                    <p className="text-[10px] font-black text-[#A89485] uppercase tracking-widest">Chi tiết yêu cầu</p>
-                                    <h3 className="text-2xl font-serif text-[#3D2B1F] mt-1">{selectedReq.id}</h3>
-                                    <p className="text-[11px] text-[#A89485]">{selectedReq.warehouse}</p>
-                                </div>
+                            <div className="mb-8">
+                                <p className="text-[10px] font-black text-[#A89485] uppercase tracking-widest">Chi tiết yêu cầu</p>
+                                <h3 className="text-2xl font-serif text-[#3D2B1F] mt-1">{selectedReq.requestId || "REQ-LOGIC"}</h3>
+                                <p className="text-[11px] text-[#A89485]">{selectedReq.supplierName || "Nhà cung cấp đối tác"}</p>
                             </div>
 
                             <div className="space-y-6 mb-10">
                                 <p className="text-[10px] font-black text-[#A89485] uppercase border-b border-[#F9F6F2] pb-2">Danh mục nhân xanh</p>
-                                <ProductDetail name="Robusta Đắk Lắk (G1)" qty="5,000 kg" price="85.000 / kg" />
-                                <ProductDetail name="Arabica Cầu Đất (Washed)" qty="2,500 kg" price="145.000 / kg" />
-                                <ProductDetail name="Fine Robusta Honey" qty="80 kg" price="180.000 / kg" />
+                                {/* Nếu bạn có mảng products trong document */}
+                                {selectedReq.items?.map((item, idx) => (
+                                    <ProductDetail key={idx} name={item.name} qty={`${item.quantity} kg`} price={`${item.price?.toLocaleString()} / kg`} />
+                                )) || <p className="text-xs italic">Không có dữ liệu chi tiết mặt hàng</p>}
                             </div>
 
                             <div className="bg-[#F9F6F2] p-6 rounded-2xl mb-8 flex justify-between items-end">
                                 <div>
                                     <p className="text-[10px] font-black text-[#A89485] uppercase mb-1">Khối lượng tổng</p>
-                                    <p className="text-xl font-bold text-[#3D2B1F]">8,580 kg</p>
+                                    <p className="text-xl font-bold text-[#3D2B1F]">{selectedReq.totalWeight || 0} kg</p>
                                 </div>
                                 <div className="text-right">
                                     <p className="text-[10px] font-black text-[#A89485] uppercase mb-1">Giá trị quyết toán</p>
-                                    <p className="text-2xl font-black text-[#3D2B1F] leading-none">{selectedReq.value}</p>
+                                    <p className="text-2xl font-black text-[#3D2B1F] leading-none">{selectedReq.totalPrice?.toLocaleString()}</p>
                                     <p className="text-[10px] font-bold text-[#A89485] mt-1">VND</p>
                                 </div>
                             </div>
 
-                            <div className="space-y-4">
-                                <textarea 
-                                    placeholder="Ghi chú & Lý do (nếu từ chối)..."
-                                    className="w-full bg-[#F9F6F2] border-none rounded-xl p-4 text-xs italic outline-none min-h-[100px]"
-                                />
-                                <div className="flex gap-4">
-                                    <button className="flex-1 py-4 bg-white border border-[#EAE1D6] rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-50 transition-all">
-                                        Từ chối
-                                    </button>
-                                    <button className="flex-[2] py-4 bg-[#3D2B1F] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#1A110B] transition-all flex items-center justify-center gap-2">
-                                        Phê duyệt nhập kho <Check size={14} />
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className="mt-8 p-4 bg-green-50 rounded-xl border border-green-100 flex gap-3">
-                                <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-green-600 shadow-sm">
-                                    <Info size={14} />
-                                </div>
-                                <div>
-                                    <p className="text-[10px] font-black text-green-800 uppercase tracking-tighter">Intelligence Insight</p>
-                                    <p className="text-[10px] text-green-700 leading-relaxed mt-1">Lô hàng này đã vượt qua bài kiểm định QC tại nguồn với số điểm 87/100.</p>
-                                </div>
+                            <div className="flex gap-4">
+                                <button className="flex-1 py-4 bg-white border border-[#EAE1D6] rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-600 transition-all">
+                                    Từ chối
+                                </button>
+                                <button 
+                                    onClick={() => handleApprove(selectedReq._id)}
+                                    className="flex-[2] py-4 bg-[#3D2B1F] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#1A110B] transition-all flex items-center justify-center gap-2"
+                                >
+                                    Phê duyệt nhập kho <Check size={14} />
+                                </button>
                             </div>
                         </div>
                     ) : (
@@ -136,7 +150,7 @@ const SupplierApprovalPage = () => {
     );
 };
 
-// Helper Components
+// Các Helper Components giữ nguyên bố cục cũ của bạn
 const StatBox = ({ label, value, sub }) => (
     <div className="bg-[#F9F6F2] px-6 py-4 rounded-lg min-w-[140px]">
         <p className="text-[9px] font-black text-[#A89485] uppercase tracking-widest mb-1">{label}</p>
@@ -150,8 +164,8 @@ const StatBox = ({ label, value, sub }) => (
 const ProductDetail = ({ name, qty, price }) => (
     <div className="flex justify-between items-center group">
         <div>
-            <p className="text-[11px] font-bold text-[#3D2B1F] group-hover:text-brown-600 transition-colors">{name}</p>
-            <p className="text-[9px] text-[#A89485] font-medium uppercase tracking-tighter">SKU: RL-808-001</p>
+            <p className="text-[11px] font-bold text-[#3D2B1F]">{name}</p>
+            <p className="text-[9px] text-[#A89485] font-medium uppercase tracking-tighter">HÀNG ĐÃ KIỂM ĐỊNH</p>
         </div>
         <div className="text-right">
             <p className="text-[11px] font-black text-[#3D2B1F]">{qty}</p>

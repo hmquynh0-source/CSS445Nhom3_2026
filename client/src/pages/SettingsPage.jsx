@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FaUser, FaLock, FaBell, FaCog, FaCamera, FaCheckCircle, FaShieldAlt, FaTimes, FaGlobe, FaClock } from 'react-icons/fa';
-import { useAuth } from '../context/AuthContext';
+import axios from 'axios'; // Import axios để gọi API
 
 const SettingsPage = () => {
-  const { userProfile, updateProfile } = useAuth();
   const [activeTab, setActiveTab] = useState('Profile');
   const [isSaved, setIsSaved] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
 
-  // Ref để kích hoạt chọn file ảnh
   const fileInputRef = useRef(null);
 
   const [formData, setFormData] = useState({
@@ -31,16 +29,11 @@ const SettingsPage = () => {
 
   const [passwords, setPasswords] = useState({ old: '', new: '', confirm: '' });
 
-  useEffect(() => {
-    if (userProfile) setFormData(prev => ({ ...prev, ...userProfile }));
-  }, [userProfile]);
-
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     setIsSaved(false);
   };
 
-  // Xử lý thay đổi ảnh đại diện
   const handleAvatarChange = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -52,16 +45,27 @@ const SettingsPage = () => {
     }
   };
 
+  // --- LOGIC FIX: GỬI DỮ LIỆU ĐẾN SERVER ---
   const onSave = async () => {
     try {
-      await updateProfile(formData);
-      setIsSaved(true);
-      setTimeout(() => setIsSaved(false), 3000);
-    } catch (error) { alert("Lỗi kết nối MongoDB!"); }
+      const response = await axios.put('http://localhost:5000/api/auth/update-profile', {
+        email: formData.email, // Dùng email để tìm user trong DB
+        name: formData.name,
+        phone: formData.phone,
+        position: formData.role // Lưu 'role' vào trường 'position' của MongoDB
+      });
+
+      if (response.data.success) {
+        setIsSaved(true);
+        setTimeout(() => setIsSaved(false), 3000);
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Lỗi kết nối MongoDB! Hãy đảm bảo Server đang chạy.");
+    }
   };
 
-  // --- RENDER FUNCTIONS ---
-
+  // --- GIỮ NGUYÊN CÁC HÀM RENDER VÀ STYLES CỦA BẠN ---
   const renderProfile = () => (
     <div style={styles.cardContainer}>
       <div style={styles.profileHeader}>
@@ -81,14 +85,13 @@ const SettingsPage = () => {
         </div>
         <div style={styles.inputGroup}>
           <label style={styles.label}>Email *</label>
-          <input style={styles.input} value={formData.email} onChange={(e) => handleInputChange('email', e.target.value)} />
+          <input style={styles.input} value={formData.email} readOnly />
         </div>
         <div style={styles.inputGroup}>
           <label style={styles.label}>Số điện thoại</label>
           <input style={styles.input} value={formData.phone} onChange={(e) => handleInputChange('phone', e.target.value)} />
         </div>
 
-        {/* Chỗ thay đổi nằm ở đây */}
         <div style={styles.inputGroup}>
           <label style={styles.label}>Vị trí</label>
           <select
@@ -182,7 +185,6 @@ const SettingsPage = () => {
         </main>
       </div>
 
-      {/* Modal Đổi mật khẩu */}
       {showPasswordModal && (
         <div style={styles.modalOverlay}>
           <div style={styles.modal}>
@@ -205,6 +207,7 @@ const SettingsPage = () => {
   );
 };
 
+// --- GIỮ NGUYÊN STYLES BẠN ĐÃ VIẾT ---
 const styles = {
   container: { padding: '40px', maxWidth: '1200px', margin: '0 auto', fontFamily: 'sans-serif', color: '#3D2B1F' },
   mainTitle: { fontSize: '24px', fontWeight: 'bold', borderBottom: '3px solid #4A6741', display: 'inline-block' },

@@ -23,7 +23,11 @@ import SystemMonitoringPage from './pages/SystemMonitoringPage';
 import ReportExportPage from './pages/ReportExportPage';
 import SupplierDashboard from './pages/SupplierDashboard';
 import SettingsPage from './pages/SettingsPage';
+import CustomerLayout from './components/CustomerLayout';
 import CustomerDashboard from './pages/CustomerDashboard';
+import CustomerProducts from './pages/CustomerProducts';
+import CustomerOrders from './pages/CustomerOrders';
+import CustomerLedger from './pages/CustomerLedger';
 import LogoutSuccess from './pages/LogoutSuccess';
 import DashboardLayout from './components/DashboardLayout';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -36,20 +40,27 @@ import SupplierOrdersPage from './pages/SupplierOrdersPage';
 import SupplierInventoryPage from './pages/SupplierInventoryPage';
 import PersonalProfilePage from './pages/PersonalProfilePage'; 
 
-/** * Component bảo vệ Route theo vai trò */
+/** * Component bảo vệ Route theo vai trò 
+ */
 const RoleProtectedRoute = ({ children, allowedRole }) => {
     const { isAuthenticated, userRole, loading } = useAuth();
 
-    if (loading) return <div className="flex items-center justify-center h-screen bg-gray-100"><div className="text-lg">Loading...</div></div>;
+    if (loading) return (
+        <div className="flex items-center justify-center h-screen bg-[#FDF8F3]">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#3D2B1F]"></div>
+        </div>
+    );
 
     if (!isAuthenticated) {
         return <Navigate to="/login" replace />;
     }
     
+    // Kiểm tra quyền truy cập (tùy chọn: có thể thêm logic check allowedRole cụ thể ở đây)
     return children;
 };
 
-/** * Wrapper cho khu vực Admin/Staff */
+/** * Wrapper cho khu vực Admin/Staff - Sử dụng chung DashboardLayout
+ */
 const AdminLayoutWrapper = () => (
     <ErrorBoundary>
         <RBACProvider>
@@ -83,7 +94,11 @@ const AdminLayoutWrapper = () => (
 function App() {
     const { isAuthenticated, userRole, loading } = useAuth();
 
-    if (loading) return <div className="flex items-center justify-center h-screen bg-gray-100"><div className="text-lg">Loading...</div></div>;
+    if (loading) return (
+        <div className="flex items-center justify-center h-screen bg-[#FDF8F3]">
+            <div className="text-lg font-bold text-[#3D2B1F]">Đang tải hệ thống RoastLogic...</div>
+        </div>
+    );
 
     return (
         <Routes>
@@ -93,14 +108,14 @@ function App() {
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/logout-success" element={<LogoutSuccess />} />
 
-            {/* 2. ROOT DISPATCHER */}
+            {/* 2. ROOT DISPATCHER - Điều hướng người dùng sau khi đăng nhập */}
             <Route
                 path="/"
                 element={
                     !isAuthenticated ? <Navigate to="/login" replace /> :
-                        userRole === 'supplier' ? <Navigate to="/supplier/dashboard" replace /> :
-                            userRole === 'customer' ? <Navigate to="/customer/dashboard" replace /> :
-                                <Navigate to="/admin/home" replace />
+                    userRole === 'supplier' ? <Navigate to="/supplier/dashboard" replace /> :
+                    userRole === 'customer' ? <Navigate to="/customer/dashboard" replace /> :
+                    <Navigate to="/admin/home" replace />
                 }
             />
 
@@ -121,14 +136,19 @@ function App() {
                 </RoleProtectedRoute>
             } />
 
-            {/* 4. CUSTOMER AREA */}
+            {/* 4. CUSTOMER AREA - Đã sửa lỗi Nesting */}
             <Route path="/customer/*" element={
                 <RoleProtectedRoute allowedRole="customer">
                     <Routes>
-                        {/* Bạn có thể thêm CustomerLayout ở đây nếu có */}
-                        <Route path="dashboard" element={<CustomerDashboard />} />
-                        <Route path="settings" element={<PersonalProfilePage />} />
-                        <Route path="*" element={<Navigate to="dashboard" replace />} />
+                        <Route element={<CustomerLayout />}>
+                            <Route path="dashboard" element={<CustomerDashboard />} />
+                            <Route path="settings" element={<PersonalProfilePage />} />
+                            {/* Thêm các Route khác cho khách hàng tại đây */}
+                            <Route path="products" element={<CustomerProducts />} />
+                            <Route path="orders" element={<CustomerOrders />} />
+                            <Route path="ledger" element={<CustomerLedger />} />
+                            <Route path="*" element={<Navigate to="dashboard" replace />} />
+                        </Route>
                     </Routes>
                 </RoleProtectedRoute>
             } />
@@ -140,7 +160,7 @@ function App() {
                 </RoleProtectedRoute>
             } />
 
-            {/* 6. CATCH ALL */}
+            {/* 6. CATCH ALL - Xử lý các đường dẫn không tồn tại */}
             <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
     );

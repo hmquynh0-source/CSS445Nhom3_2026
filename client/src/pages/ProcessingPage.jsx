@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { 
     FaThLarge, FaWarehouse, FaCogs, FaCoffee, FaClipboardList, 
     FaTruck, FaUsers, FaChartBar, FaBrain, FaPlus, FaSearch, 
@@ -6,15 +7,69 @@ import {
 } from 'react-icons/fa';
 
 const ProcessingPage = () => {
+    // --- STATE QUẢN LÝ DỮ LIỆU ---
+    const [history, setHistory] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [sensors, setSensors] = useState({
+        temp: 205.5,
+        time: "14:20s",
+        pressure: 2.4
+    });
+
+    // State cho Form khởi tạo
+    const [batchForm, setBatchForm] = useState({
+        source: 'Cà phê nhân xanh - Arabica',
+        target: 'Rang nhạt (Light Roast)',
+        weight: '60.0',
+        expectedLoss: '12.5'
+    });
+
+    // 1. Giả lập/Lấy dữ liệu cảm biến thời gian thực
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setSensors(prev => ({
+                ...prev,
+                // Nhiệt độ dao động nhẹ +/- 0.2 độ
+                temp: parseFloat((prev.temp + (Math.random() * 0.4 - 0.2)).toFixed(1))
+            }));
+        }, 3000);
+        return () => clearInterval(interval);
+    }, []);
+
+    // 2. Lấy lịch sử mẻ rang từ API
+    const fetchHistory = async () => {
+        try {
+            const res = await axios.get('http://localhost:5000/api/processing/history');
+            if (res.data.success) setHistory(res.data.data);
+        } catch (err) {
+            console.error("Không thể lấy lịch sử:", err);
+        }
+    };
+
+    useEffect(() => {
+        fetchHistory();
+    }, []);
+
+    // 3. Xử lý khi nhấn nút Thực thi
+    const handleExecute = async () => {
+        setLoading(true);
+        try {
+            const res = await axios.post('http://localhost:5000/api/processing/execute', batchForm);
+            if (res.data.success) {
+                alert("Đã khởi tạo lệnh chế biến thành công!");
+                fetchHistory(); // Cập nhật lại danh sách bên phải
+            }
+        } catch (err) {
+            alert("Lỗi thực thi: " + (err.response?.data?.message || "Server error"));
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div style={styles.container}>
-            {/* 1. SIDEBAR DỌC */}
-           
-
-            {/* 2. MAIN CONTENT */}
             <main style={styles.mainArea}>
                 <div style={styles.contentPadding}>
-                    {/* Page Title & Weekly Stats */}
                     <div style={styles.pageHeaderRow}>
                         <div>
                             <p style={styles.upperTitle}>SẢN XUẤT & ĐIỀU HÀNH</p>
@@ -33,76 +88,108 @@ const ProcessingPage = () => {
                     </div>
 
                     <div style={styles.dashboardGrid}>
-                        {/* LEFT COLUMN: Form & Real-time Sensors */}
+                        {/* LEFT COLUMN */}
                         <div style={styles.leftCol}>
                             <div style={styles.formCard}>
                                 <div style={styles.formHeader}>
                                     <h3 style={{margin: 0, fontSize: '18px'}}>Khởi tạo Lệnh Chế biến</h3>
-                                    <span style={styles.batchTag}>ID: BATCH-00942</span>
+                                    <span style={styles.batchTag}>ID: BATCH-NEW</span>
                                 </div>
 
                                 <div style={styles.inputGrid}>
                                     <div style={styles.inputGroup}>
                                         <label style={styles.label}>NGUỒN ĐẦU VÀO</label>
-                                        <select style={styles.select}>
+                                        <select 
+                                            style={styles.select}
+                                            value={batchForm.source}
+                                            onChange={(e) => setBatchForm({...batchForm, source: e.target.value})}
+                                        >
                                             <option>Cà phê nhân xanh - Arabica</option>
+                                            <option>Cà phê nhân xanh - Robusta</option>
                                         </select>
                                     </div>
                                     <div style={styles.inputGroup}>
                                         <label style={styles.label}>SẢN PHẨM ĐÍCH</label>
-                                        <select style={styles.select}>
+                                        <select 
+                                            style={styles.select}
+                                            value={batchForm.target}
+                                            onChange={(e) => setBatchForm({...batchForm, target: e.target.value})}
+                                        >
                                             <option>Rang nhạt (Light Roast)</option>
+                                            <option>Rang vừa (Medium Roast)</option>
+                                            <option>Rang đậm (Dark Roast)</option>
                                         </select>
                                     </div>
                                     <div style={styles.inputGroup}>
                                         <label style={styles.label}>KHỐI LƯỢNG (KG)</label>
-                                        <input type="text" defaultValue="60.0" style={styles.input} />
+                                        <input 
+                                            type="text" 
+                                            value={batchForm.weight} 
+                                            style={styles.input} 
+                                            onChange={(e) => setBatchForm({...batchForm, weight: e.target.value})}
+                                        />
                                     </div>
                                     <div style={styles.inputGroup}>
                                         <label style={styles.label}>TỶ LỆ HAO HỤT DỰ KIẾN (%)</label>
-                                        <input type="text" defaultValue="12.5" style={styles.input} />
+                                        <input 
+                                            type="text" 
+                                            value={batchForm.expectedLoss} 
+                                            style={styles.input} 
+                                            onChange={(e) => setBatchForm({...batchForm, expectedLoss: e.target.value})}
+                                        />
                                     </div>
                                 </div>
 
-                                <button style={styles.executeBtn}>
-                                    <FaFireAlt /> THỰC THI MẺ RANG
+                                <button 
+                                    style={{...styles.executeBtn, opacity: loading ? 0.7 : 1}} 
+                                    onClick={handleExecute}
+                                    disabled={loading}
+                                >
+                                    <FaFireAlt /> {loading ? "ĐANG KHỞI TẠO..." : "THỰC THI MẺ RANG"}
                                 </button>
                             </div>
 
-                            {/* Real-time Sensors Row */}
                             <div style={styles.sensorRow}>
-                                <SensorCard icon={<FaThermometerHalf color="#D97706"/>} label="NHIỆT ĐỘ HIỆN TẠI" value="205.5°C" />
-                                <SensorCard icon={<FaStopwatch color="#3D2B1F"/>} label="THỜI GIAN LÝ TƯỞNG" value="14:20s" />
-                                <SensorCard icon={<FaWind color="#4F7942"/>} label="ÁP SUẤT KHÍ ĐỐT" value="2.4 bar" />
+                                <SensorCard icon={<FaThermometerHalf color="#D97706"/>} label="NHIỆT ĐỘ HIỆN TẠI" value={`${sensors.temp}°C`} />
+                                <SensorCard icon={<FaStopwatch color="#3D2B1F"/>} label="THỜI GIAN LÝ TƯỞNG" value={sensors.time} />
+                                <SensorCard icon={<FaWind color="#4F7942"/>} label="ÁP SUẤT KHÍ ĐỐT" value={`${sensors.pressure} bar`} />
                             </div>
                         </div>
 
                         {/* RIGHT COLUMN: Recent History */}
                         <div style={styles.historyCard}>
                             <h3 style={{fontSize: '18px', margin: '0 0 5px 0'}}>Lịch sử Gần đây</h3>
-                            <p style={{fontSize: '12px', color: '#A89B8D', marginBottom: '20px'}}>Ghi chép 10 mẻ rang gần nhất</p>
+                            <p style={{fontSize: '12px', color: '#A89B8D', marginBottom: '20px'}}>Ghi chép các mẻ rang gần nhất</p>
                             
                             <div style={styles.historyList}>
-                                <HistoryItem 
-                                    id="BATCH-00941" status="ĐANG XỬ LÝ" 
-                                    weight="60kg → 52.4kg" loss="12.6% Loss" 
-                                    isProcessing progress="70%" 
-                                />
-                                <HistoryItem 
-                                    id="BATCH-00940" status="HOÀN TẤT • 14:20 TODAY" 
-                                    weight="120kg → 106.8kg" type="Light Roast Arabica"
-                                    tag="STANDARD" tagColor="#4F7942"
-                                />
-                                <HistoryItem 
-                                    id="BATCH-00939" status="HOÀN TẤT • 11:45 TODAY" 
-                                    weight="30kg → 25.1kg" type="Dark Roast Robusta"
-                                    tag="HIGH LOSS" tagColor="#D97706"
-                                />
-                                <HistoryItem 
-                                    id="BATCH-00938" status="HOÀN TẤT • 09:12 TODAY" 
-                                    weight="85kg → 74.8kg" type="Medium Roast Blend"
-                                    tag="STANDARD" tagColor="#4F7942"
-                                />
+                                {history.length > 0 ? history.map((item, idx) => (
+                                    <HistoryItem 
+                                        key={idx}
+                                        id={item.batchId}
+                                        status={item.status} 
+                                        weight={item.weightInfo} 
+                                        loss={item.lossInfo}
+                                        type={item.type}
+                                        isProcessing={item.status === 'ĐANG XỬ LÝ'} 
+                                        progress={item.progress || "0%"} 
+                                        tag={item.tag} 
+                                        tagColor={item.tagColor}
+                                    />
+                                )) : (
+                                    /* Dữ liệu mẫu nếu API chưa có đồ */
+                                    <>
+                                        <HistoryItem 
+                                            id="BATCH-00941" status="ĐANG XỬ LÝ" 
+                                            weight="60kg → 52.4kg" loss="12.6% Loss" 
+                                            isProcessing progress="70%" 
+                                        />
+                                        <HistoryItem 
+                                            id="BATCH-00940" status="HOÀN TẤT • 14:20 TODAY" 
+                                            weight="120kg → 106.8kg" type="Light Roast Arabica"
+                                            tag="STANDARD" tagColor="#4F7942"
+                                        />
+                                    </>
+                                )}
                             </div>
 
                             <button style={styles.viewLogBtn}>XEM TOÀN BỘ NHẬT KÝ →</button>
@@ -114,7 +201,7 @@ const ProcessingPage = () => {
     );
 };
 
-// --- SUB-COMPONENTS ---
+// --- GIỮ NGUYÊN CÁC SUB-COMPONENTS VÀ STYLES CỦA BẠN ---
 const SensorCard = ({ icon, label, value }) => (
     <div style={styles.sCard}>
         <div style={styles.sIcon}>{icon}</div>
@@ -145,29 +232,9 @@ const HistoryItem = ({ id, status, weight, loss, isProcessing, progress, type, t
     </div>
 );
 
-const NavItem = ({ icon, label, active }) => (
-    <div style={{...styles.navLink, backgroundColor: active ? '#3D2B1F' : 'transparent', color: active ? '#FFF' : '#3D2B1F'}}>
-        {icon} <span style={{marginLeft: '12px'}}>{label}</span>
-    </div>
-);
-
-// --- STYLES SYSTEM ---
 const styles = {
     container: { display: 'flex', minHeight: '100vh', backgroundColor: '#F9F1E7', fontFamily: 'Inter, sans-serif' },
-    sidebar: { width: '260px', borderRight: '1px solid #E5D5C5', padding: '40px 20px', display: 'flex', flexDirection: 'column' },
-    brandSection: { marginBottom: '40px' },
-    brandTitle: { fontSize: '20px', fontWeight: '900', color: '#3D2B1F', margin: 0 },
-    brandSub: { fontSize: '10px', letterSpacing: '2px', color: '#A89B8D' },
-    navMenu: { flex: 1 },
-    navLink: { display: 'flex', alignItems: 'center', padding: '12px 16px', borderRadius: '8px', cursor: 'pointer', marginBottom: '4px', fontSize: '14px', fontWeight: '500' },
-    newShipmentBtn: { backgroundColor: '#3D2B1F', color: 'white', border: 'none', padding: '14px', borderRadius: '8px', fontWeight: '700', cursor: 'pointer' },
     mainArea: { flex: 1, display: 'flex', flexDirection: 'column' },
-    topHeader: { height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 40px', borderBottom: '1px solid #E5D5C5' },
-    breadcrumb: { display: 'flex', gap: '24px', fontSize: '14px', color: '#A89B8D' },
-    breadcrumbActive: { color: '#4F7942', fontWeight: '700', borderBottom: '2px solid #4F7942', paddingBottom: '23px' },
-    headerRight: { display: 'flex', alignItems: 'center', gap: '20px' },
-    headerIcon: { fontSize: '18px', color: '#3D2B1F' },
-    userAvatar: { width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#3D2B1F' },
     contentPadding: { padding: '30px 40px' },
     pageHeaderRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' },
     upperTitle: { fontSize: '11px', fontWeight: '700', color: '#A89B8D', letterSpacing: '1px', margin: 0 },
