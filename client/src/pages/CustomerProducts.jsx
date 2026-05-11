@@ -1,18 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { ShoppingCart, X, Plus, Minus, CheckCircle2 } from 'lucide-react';
+import { ShoppingCart, X, Plus, Minus, CheckCircle2, MapPin, Loader2 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext'; 
 
 const CustomerProducts = () => {
+    // 1. Lấy thông tin từ AuthContext (Hệ thống đăng nhập của bạn)
+    const { userId, userName } = useAuth(); 
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('Tất Cả Hạt');
 
-    // --- STATE CHO ĐẶT HÀNG ---
+    // State cho Modal đặt hàng
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [quantity, setQuantity] = useState(1);
+    const [address, setAddress] = useState(''); 
     const [orderSuccess, setOrderSuccess] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // 1. Lấy danh sách sản phẩm từ Backend
+    // 2. Lấy danh sách sản phẩm từ Backend
     useEffect(() => {
         const fetchProducts = async () => {
             try {
@@ -21,7 +26,7 @@ const CustomerProducts = () => {
                 const cleanData = rawData.map(p => ({
                     ...p,
                     displayPrice: p.salePrice || p.price || 0,
-                    displayCategory: p.category?.name || "Arabica Nguyên Chất"
+                    displayCategory: p.category?.name || "Hạt Cà Phê"
                 }));
                 setProducts(cleanData);
             } catch (err) {
@@ -33,63 +38,73 @@ const CustomerProducts = () => {
         fetchProducts();
     }, []);
 
-    // 2. Mở Modal đặt hàng
-    const handleOpenOrder = (product) => {
-        setSelectedProduct(product);
-        setQuantity(1);
-        setOrderSuccess(false);
-    };
-
-    // 3. Hàm XÁC NHẬN ĐẶT HÀNG (Kết nối trực tiếp tới Backend)
+    // 3. Xử lý đặt hàng (Gửi đúng userId cho Backend)
     const handleConfirmOrder = async () => {
-        try {
-            if (!selectedProduct) return;
+        // Lấy ID dự phòng từ LocalStorage nếu Context bị reset
+        const finalUserId = userId || localStorage.getItem('userId');
+        const finalUserName = userName || localStorage.getItem('userName');
 
+        if (!finalUserId) {
+            alert("Vui lòng đăng nhập lại để hệ thống nhận diện tài khoản!");
+            return;
+        }
+
+        if (!address.trim()) {
+            alert("Vui lòng nhập địa chỉ để chúng tôi giao hàng!");
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            // Cấu trúc dữ liệu gửi lên (Khớp với req.body của orderRoutes.js bạn đã gửi)
             const orderData = {
-                // Khớp với Model: orderCode dạng #RL-xxxx
-                orderCode: `#RL-${Math.floor(1000 + Math.random() * 9000)}`,
-                // Khớp với Model: Gửi ID sản phẩm
+                userId: finalUserId,       // KHÓA CHÍNH: Phải là userId
                 product: selectedProduct._id,
-                // Khớp với Model: Số lượng và tổng tiền
-                quantity: quantity,
-                totalPrice: selectedProduct.displayPrice * quantity,
-                // Trạng thái mặc định để Admin thấy ở trang Duyệt/Xuất kho
-                status: 'PROCESSING',
-                customerName: "Khách hàng vãng lai"
+                quantity: Number(quantity),
+                totalPrice: Number(selectedProduct.displayPrice * quantity),
+                customerName: finalUserName,
+                address: address.trim()    // Gửi thêm địa chỉ cho đầy đủ
             };
+
+            console.log("🚀 Đang gửi đơn hàng:", orderData);
 
             const response = await axios.post('http://localhost:5000/api/orders', orderData);
 
             if (response.data.success) {
                 setOrderSuccess(true);
-                // Sau 2.5 giây đóng modal để khách tiếp tục mua sắm
+                // Reset form sau 3 giây
                 setTimeout(() => {
                     setSelectedProduct(null);
-                }, 2500);
+                    setOrderSuccess(false);
+                    setAddress('');
+                }, 3000);
             }
         } catch (error) {
-            console.error("Lỗi đặt hàng:", error.response?.data || error.message);
-            alert("Lỗi: " + (error.response?.data?.message || "Không thể gửi đơn hàng. Vui lòng kiểm tra Server!"));
+            console.error("❌ Lỗi Backend trả về:", error.response?.data);
+            alert("Đặt hàng thất bại: " + (error.response?.data?.message || "Lỗi kết nối"));
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
-    const filteredProducts = products.filter(p =>
-        activeTab === 'Tất Cả Hạt' || p.displayCategory === activeTab
+    if (loading) return (
+        <div className="flex flex-col items-center justify-center h-screen bg-[#FDF8F3]">
+            <Loader2 className="animate-spin text-[#3D2B1F]" size={48} />
+            <p className="mt-4 font-black text-[#3D2B1F]">ĐANG TẢI DỮ LIỆU...</p>
+        </div>
     );
 
-    if (loading) return <div className="p-10 text-center font-black text-[#3D2B1F] animate-pulse">ĐANG TẢI DỮ LIỆU...</div>;
-
     return (
-        <div className="relative space-y-10 p-2 bg-[#FDF8F3] min-h-screen">
-            {/* Tabs chọn loại hạt */}
-            <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+        <div className="p-6 bg-[#FDF8F3] min-h-screen">
+            {/* Thanh lọc sản phẩm */}
+            <div className="flex gap-4 overflow-x-auto pb-6 scrollbar-hide">
                 {['Tất Cả Hạt', 'Arabica Nguyên Chất', 'Robusta Đậm Đà'].map((tab) => (
                     <button 
                         key={tab} 
                         onClick={() => setActiveTab(tab)}
-                        className={`px-8 py-4 rounded-full text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${
+                        className={`px-6 py-3 rounded-full text-[12px] font-black uppercase transition-all ${
                             activeTab === tab 
-                            ? 'bg-[#3D2B1F] text-white shadow-xl scale-105' 
+                            ? 'bg-[#3D2B1F] text-white shadow-lg' 
                             : 'bg-white text-[#A89485] border border-[#EFE3D5] hover:border-[#3D2B1F]'
                         }`}
                     >
@@ -98,34 +113,23 @@ const CustomerProducts = () => {
                 ))}
             </div>
 
-            {/* Grid danh sách sản phẩm */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                {filteredProducts.map((product) => (
-                    <div key={product._id} className="bg-white rounded-[45px] p-6 border border-[#EFE3D5] shadow-sm hover:shadow-2xl transition-all group flex flex-col">
-                        <div className="relative aspect-square rounded-[35px] overflow-hidden mb-8 bg-[#FDF8F3]">
-                            <img 
-                                src={product.image || 'https://via.placeholder.com/300'} 
-                                alt={product.name} 
-                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
-                            />
+            {/* Grid hiển thị sản phẩm */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {products.filter(p => activeTab === 'Tất Cả Hạt' || p.displayCategory === activeTab).map((product) => (
+                    <div key={product._id} className="bg-white rounded-[40px] p-5 border border-[#EFE3D5] hover:shadow-xl transition-all group">
+                        <div className="aspect-square rounded-[30px] overflow-hidden mb-6 bg-[#FDF8F3]">
+                            <img src={product.image} className="w-full h-full object-cover group-hover:scale-105 transition-all" alt={product.name} />
                         </div>
-                        <div className="flex-1 space-y-4">
-                            <p className="text-[10px] font-bold text-[#A89485] uppercase tracking-widest">{product.displayCategory}</p>
-                            <h3 className="text-2xl font-black text-[#3D2B1F] leading-tight">{product.name}</h3>
-                            
-                            <div className="flex justify-between items-end pt-6 border-t border-[#FDF8F3] mt-auto">
-                                <div>
-                                    <p className="text-[10px] font-black text-[#A89485] uppercase">Giá mỗi gói</p>
-                                    <p className="text-3xl font-black text-[#3D2B1F]">
-                                        {product.displayPrice?.toLocaleString()} 
-                                        <span className="text-sm font-bold ml-1">VND</span>
-                                    </p>
-                                </div>
-                                <button
-                                    onClick={() => handleOpenOrder(product)}
-                                    className="bg-[#3D2B1F] p-5 rounded-[22px] text-white hover:bg-orange-600 transition-all shadow-lg active:scale-90"
+                        <div className="space-y-3">
+                            <p className="text-[10px] font-bold text-[#A89485] uppercase">{product.displayCategory}</p>
+                            <h3 className="text-xl font-black text-[#3D2B1F]">{product.name}</h3>
+                            <div className="flex justify-between items-center pt-4 border-t border-[#FDF8F3]">
+                                <p className="text-2xl font-black text-[#3D2B1F]">{product.displayPrice?.toLocaleString()} đ</p>
+                                <button 
+                                    onClick={() => { setSelectedProduct(product); setQuantity(1); setAddress(''); }}
+                                    className="bg-[#3D2B1F] p-4 rounded-2xl text-white hover:bg-orange-700"
                                 >
-                                    <ShoppingCart size={24} />
+                                    <ShoppingCart size={20} />
                                 </button>
                             </div>
                         </div>
@@ -133,78 +137,64 @@ const CustomerProducts = () => {
                 ))}
             </div>
 
-            {/* --- MODAL ĐẶT HÀNG --- */}
+            {/* Modal đặt hàng */}
             {selectedProduct && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md">
-                    <div className="bg-white w-full max-w-lg rounded-[50px] shadow-2xl overflow-hidden relative">
-                        
-                        {/* Nút Đóng */}
-                        <button 
-                            onClick={() => setSelectedProduct(null)} 
-                            className="absolute top-8 right-8 z-10 p-2 bg-[#FDF8F3] rounded-full text-[#3D2B1F] hover:bg-red-50 transition-colors"
-                        >
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden relative">
+                        <button onClick={() => setSelectedProduct(null)} className="absolute top-6 right-6 p-2 bg-[#FDF8F3] rounded-full">
                             <X size={20} />
                         </button>
 
                         {!orderSuccess ? (
-                            <div className="p-10 space-y-8">
-                                <div className="flex gap-6 items-center">
-                                    <div className="w-24 h-24 rounded-3xl overflow-hidden shadow-inner bg-[#FDF8F3]">
-                                        <img src={selectedProduct.image} className="w-full h-full object-cover" alt="Selected" />
-                                    </div>
+                            <div className="p-8 space-y-5">
+                                <h2 className="text-2xl font-black text-[#3D2B1F]">Xác nhận đơn hàng</h2>
+                                
+                                <div className="flex items-center gap-4 bg-[#FDF8F3] p-4 rounded-3xl">
+                                    <img src={selectedProduct.image} className="w-16 h-16 rounded-xl object-cover shadow-sm" />
                                     <div>
-                                        <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest">Xác nhận đơn hàng</span>
-                                        <h2 className="text-3xl font-black text-[#3D2B1F] leading-tight">{selectedProduct.name}</h2>
+                                        <p className="font-black text-[#3D2B1F]">{selectedProduct.name}</p>
+                                        <p className="text-sm text-orange-600 font-bold">{selectedProduct.displayPrice.toLocaleString()} đ</p>
                                     </div>
                                 </div>
 
-                                <div className="bg-[#FDF8F3] p-8 rounded-[35px] space-y-6">
-                                    <div className="flex justify-between items-center">
-                                        <span className="font-bold text-[#A89485]">Số lượng đặt</span>
-                                        <div className="flex items-center gap-4 bg-white p-2 rounded-2xl border border-[#EFE3D5]">
-                                            <button 
-                                                onClick={() => setQuantity(Math.max(1, quantity - 1))} 
-                                                className="p-2 hover:text-orange-500 transition-colors"
-                                            >
-                                                <Minus size={18} />
-                                            </button>
-                                            <span className="w-8 text-center font-black text-xl">{quantity}</span>
-                                            <button 
-                                                onClick={() => setQuantity(quantity + 1)} 
-                                                className="p-2 hover:text-orange-500 transition-colors"
-                                            >
-                                                <Plus size={18} />
-                                            </button>
-                                        </div>
-                                    </div>
+                                <div className="space-y-2">
+                                    <label className="text-[11px] font-black text-[#A89485] uppercase flex items-center gap-2 px-1">
+                                        <MapPin size={14} /> Địa chỉ giao hàng
+                                    </label>
+                                    <textarea 
+                                        className="w-full bg-[#FDF8F3] border border-[#EFE3D5] rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-[#3D2B1F]"
+                                        placeholder="Nhập địa chỉ nhận hàng..."
+                                        rows="2"
+                                        value={address}
+                                        onChange={(e) => setAddress(e.target.value)}
+                                    />
+                                </div>
 
-                                    <div className="flex justify-between items-center border-t border-[#EFE3D5] pt-6">
-                                        <span className="text-lg font-black text-[#3D2B1F]">Tổng tiền:</span>
-                                        <span className="text-3xl font-black text-orange-600">
-                                            {(selectedProduct.displayPrice * quantity).toLocaleString()} 
-                                            <span className="text-sm ml-1">đ</span>
-                                        </span>
+                                <div className="flex justify-between items-center bg-[#FDF8F3] p-4 rounded-3xl">
+                                    <div className="flex items-center gap-3 bg-white p-2 rounded-xl border border-[#EFE3D5]">
+                                        <button onClick={() => setQuantity(Math.max(1, quantity - 1))}><Minus size={16} /></button>
+                                        <span className="font-black w-6 text-center">{quantity}</span>
+                                        <button onClick={() => setQuantity(quantity + 1)}><Plus size={16} /></button>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-[10px] font-bold text-[#A89485]">TỔNG CỘNG</p>
+                                        <p className="text-xl font-black text-orange-600">{(selectedProduct.displayPrice * quantity).toLocaleString()} đ</p>
                                     </div>
                                 </div>
 
-                                <button
+                                <button 
+                                    disabled={isSubmitting}
                                     onClick={handleConfirmOrder}
-                                    className="w-full bg-[#3D2B1F] py-6 rounded-[25px] text-white font-black uppercase tracking-[0.2em] hover:bg-black transition-all shadow-xl active:scale-[0.98]"
+                                    className="w-full bg-[#3D2B1F] py-4 rounded-2xl text-white font-black uppercase tracking-widest flex justify-center items-center gap-2"
                                 >
-                                    Xác nhận và Gửi đơn
+                                    {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : "GỬI ĐƠN HÀNG NGAY"}
                                 </button>
                             </div>
                         ) : (
-                            /* Giao diện thành công */
-                            <div className="p-20 text-center space-y-6 animate-in zoom-in duration-500">
-                                <div className="flex justify-center text-green-500">
-                                    <CheckCircle2 size={100} strokeWidth={1} className="animate-bounce" />
-                                </div>
-                                <h2 className="text-3xl font-black text-[#3D2B1F]">ĐẶT HÀNG XONG!</h2>
-                                <p className="text-[#A89485] font-medium leading-relaxed">
-                                    Đơn hàng của bạn đã được chuyển đến hệ thống.<br/> 
-                                    Vui lòng đợi Admin duyệt để xuất kho.
-                                </p>
+                            <div className="p-16 text-center space-y-4">
+                                <CheckCircle2 size={80} className="mx-auto text-green-500 animate-bounce" />
+                                <h2 className="text-2xl font-black text-[#3D2B1F]">THÀNH CÔNG!</h2>
+                                <p className="text-[#A89485] text-sm">Đơn hàng của bạn đã được tiếp nhận.</p>
                             </div>
                         )}
                     </div>

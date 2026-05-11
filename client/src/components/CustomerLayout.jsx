@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { 
-    LayoutDashboard, Package, Coffee, FileText, Users, 
-    Search, Bell, LogOut, Settings, HelpCircle, 
-    Plus, Menu, X
+    LayoutDashboard, Package, Coffee, FileText, 
+    Search, Bell, LogOut, Settings, X, User, Phone, Mail, Award
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -12,6 +11,7 @@ const CustomerLayout = () => {
     const location = useLocation();
     const { userProfile, userName, logout } = useAuth();
     const [isSidebarOpen, setSidebarOpen] = useState(true);
+    const [showProfileModal, setShowProfileModal] = useState(false); // State quản lý Modal
 
     const userDisplayName = userProfile?.name || userName || 'Khách hàng';
 
@@ -59,12 +59,7 @@ const CustomerLayout = () => {
                 </nav>
 
                 <div className="mt-auto space-y-2 pt-6 border-t border-[#EFE3D5]">
-                    <button 
-                        onClick={() => navigate('/customer/orders/new')}
-                        className="w-full bg-[#3D2B1F] text-white py-4 rounded-xl flex items-center justify-center gap-2 font-bold text-[10px] uppercase tracking-widest hover:bg-black transition-all active:scale-95 mb-4 shadow-md"
-                    >
-                        <Plus size={16} /> Đơn hàng mới
-                    </button>
+                    {/* NÚT ĐƠN HÀNG MỚI ĐÃ ĐƯỢC ẨN ĐI Ở ĐÂY */}
                     
                     <button className="w-full flex items-center gap-4 px-4 py-3 text-[#A89485] font-bold text-[11px] uppercase tracking-widest hover:bg-gray-50 rounded-xl transition-all">
                         <Settings size={18}/> Cài đặt
@@ -98,8 +93,12 @@ const CustomerLayout = () => {
                             <span className="absolute top-2 right-2 bg-red-500 w-2 h-2 rounded-full border-2 border-white animate-pulse"></span>
                         </div>
                         
-                        <div className="flex items-center gap-3 bg-white p-1 pr-5 rounded-full shadow-sm border border-[#EFE3D5] cursor-pointer hover:shadow-md transition-shadow">
-                            <div className="w-9 h-9 bg-[#3D2B1F] rounded-full flex items-center justify-center text-[#FDF8F3] font-bold text-sm shadow-inner">
+                        {/* PHẦN CLICK VÀO HIỆN THÔNG TIN */}
+                        <div 
+                            onClick={() => setShowProfileModal(true)}
+                            className="flex items-center gap-3 bg-white p-1 pr-5 rounded-full shadow-sm border border-[#EFE3D5] cursor-pointer hover:border-[#3D2B1F] hover:shadow-md transition-all group"
+                        >
+                            <div className="w-9 h-9 bg-[#3D2B1F] rounded-full flex items-center justify-center text-[#FDF8F3] font-bold text-sm shadow-inner group-hover:bg-black transition-colors">
                                 {userDisplayName.charAt(0).toUpperCase()}
                             </div>
                             <div className="flex flex-col">
@@ -115,6 +114,65 @@ const CustomerLayout = () => {
                     <Outlet />
                 </main>
             </div>
+
+            {/* PROFILE MODAL - HIỆN THÔNG TIN KHÁCH HÀNG */}
+            {showProfileModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden border border-[#EFE3D5] animate-in zoom-in-95 duration-200">
+                        <div className="bg-[#3D2B1F] p-8 text-center relative">
+                            <button 
+                                onClick={() => setShowProfileModal(false)}
+                                className="absolute top-4 right-4 text-white/50 hover:text-white transition-colors"
+                            >
+                                <X size={20} />
+                            </button>
+                            <div className="w-20 h-20 bg-white rounded-full mx-auto flex items-center justify-center text-[#3D2B1F] text-3xl font-black mb-4 shadow-lg">
+                                {userDisplayName.charAt(0).toUpperCase()}
+                            </div>
+                            <h3 className="text-white font-bold text-lg uppercase tracking-wider">{userDisplayName}</h3>
+                            <p className="text-[#A89485] text-xs font-bold uppercase tracking-widest mt-1">Hạng Thành Viên VIP</p>
+                        </div>
+                        
+                        <div className="p-8 space-y-4">
+                            <div className="flex items-center gap-4 text-[#3D2B1F]">
+                                <div className="p-2 bg-[#FDF8F3] rounded-lg"><User size={18} className="text-[#A89485]"/></div>
+                                <div>
+                                    <p className="text-[10px] uppercase font-bold text-[#A89485] leading-none mb-1">Họ và tên</p>
+                                    <p className="text-sm font-bold">{userDisplayName}</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-4 text-[#3D2B1F]">
+                                <div className="p-2 bg-[#FDF8F3] rounded-lg"><Mail size={18} className="text-[#A89485]"/></div>
+                                <div>
+                                    <p className="text-[10px] uppercase font-bold text-[#A89485] leading-none mb-1">Email liên hệ</p>
+                                    <p className="text-sm font-bold">{userProfile?.email || 'customer@roastlogic.com'}</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-4 text-[#3D2B1F]">
+                                <div className="p-2 bg-[#FDF8F3] rounded-lg"><Phone size={18} className="text-[#A89485]"/></div>
+                                <div>
+                                    <p className="text-[10px] uppercase font-bold text-[#A89485] leading-none mb-1">Số điện thoại</p>
+                                    <p className="text-sm font-bold">{userProfile?.phone || '090-123-4567'}</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-4 text-[#3D2B1F]">
+                                <div className="p-2 bg-[#FDF8F3] rounded-lg"><Award size={18} className="text-[#A89485]"/></div>
+                                <div>
+                                    <p className="text-[10px] uppercase font-bold text-[#A89485] leading-none mb-1">Điểm tích lũy</p>
+                                    <p className="text-sm font-bold">2,450 Points</p>
+                                </div>
+                            </div>
+
+                            <button 
+                                onClick={() => setShowProfileModal(false)}
+                                className="w-full mt-6 bg-[#3D2B1F] text-white py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-black transition-all active:scale-95"
+                            >
+                                Đóng thông tin
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

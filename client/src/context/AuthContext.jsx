@@ -4,14 +4,13 @@ import axios from 'axios';
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-    // 1. Khởi tạo State từ LocalStorage để giữ trạng thái khi F5 trang web
+    // THÊM: userId vào state khởi tạo
     const [token, setToken] = useState(localStorage.getItem('token') || null);
     const [userRole, setUserRole] = useState(localStorage.getItem('userRole') || null);
     const [userName, setUserName] = useState(localStorage.getItem('userName') || null);
+    const [userId, setUserId] = useState(localStorage.getItem('userId') || null); // <--- THÊM DÒNG NÀY
     const [loading, setLoading] = useState(true);
 
-    // 2. Cấu hình Axios mặc định (Silent logic)
-    // Mỗi khi token thay đổi, tất cả các yêu cầu axios sau đó sẽ tự kèm theo Token
     useEffect(() => {
         if (token) {
             axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -21,61 +20,57 @@ export const AuthProvider = ({ children }) => {
         setLoading(false);
     }, [token]);
 
-    // 3. Hàm Đăng nhập (Nhận userData từ res.data.data của Login)
     const login = useCallback((userData) => {
-        // Khớp với cấu trúc backend: { _id, name, email, role, token }
-        const { token: receivedToken, name, role } = userData;
+        // THÊM: Lấy thêm _id từ userData của backend trả về
+        const { token: receivedToken, name, role, _id } = userData;
 
         if (receivedToken) {
-            // Lưu vào LocalStorage
             localStorage.setItem('token', receivedToken);
             localStorage.setItem('userRole', role || 'staff');
             localStorage.setItem('userName', name || 'User');
+            localStorage.setItem('userId', _id); // <--- LƯU ID VÀO MÁY
 
-            // Cập nhật State
             setToken(receivedToken);
             setUserRole(role || 'staff');
             setUserName(name || 'User');
+            setUserId(_id); // <--- CẬP NHẬT STATE ID
 
-            // Cài đặt header cho các request tương lai
             axios.defaults.headers.common['Authorization'] = `Bearer ${receivedToken}`;
         }
     }, []);
 
-    // 4. Hàm Đăng xuất
     const logout = useCallback(() => {
         localStorage.removeItem('token');
         localStorage.removeItem('userRole');
         localStorage.removeItem('userName');
+        localStorage.removeItem('userId'); // <--- XÓA ID KHI LOGOUT
 
         setToken(null);
         setUserRole(null);
         setUserName(null);
+        setUserId(null); // <--- RESET STATE ID
 
-        // Xóa sạch header axios
         delete axios.defaults.headers.common['Authorization'];
     }, []);
 
-    // 5. Cung cấp giá trị Context (Dùng useMemo để tối ưu hiệu năng)
     const authValue = useMemo(() => ({
         token,
         userRole,
         userName,
+        userId, // <--- ĐƯA userId VÀO CONTEXT ĐỂ TRANG KHÁC DÙNG
         loading,
         isAuthenticated: !!token,
         login,
         logout
-    }), [token, userRole, userName, loading, login, logout]);
+    }), [token, userRole, userName, userId, loading, login, logout]);
 
     return (
         <AuthContext.Provider value={authValue}>
-            {/* Chỉ render app khi đã kiểm tra xong trạng thái loading */}
             {!loading && children}
         </AuthContext.Provider>
     );
 };
 
-// Hook tùy chỉnh để sử dụng Context nhanh hơn
 export const useAuth = () => {
     const context = useContext(AuthContext);
     if (!context) {

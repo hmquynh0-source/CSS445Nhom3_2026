@@ -1,20 +1,31 @@
 const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
-const Product = require('../models/Product'); // Cần import Product để trừ tồn kho
+const Product = require('../models/Product');
 
-// 1. Lấy danh sách đơn hàng chung (Dùng cho Lịch sử đơn hàng của khách)
+// 1. LẤY DANH SÁCH ĐƠN HÀNG (CÓ LỌC THEO USER)
+// Frontend gọi: /api/orders?userId=ID_CUA_BAN
 router.get('/', async (req, res) => {
     try {
-        const orders = await Order.find().populate('product').sort({ createdAt: -1 });
+        const { userId } = req.query; // Nhận userId từ client gửi lên
+        
+        let filter = {};
+        if (userId) {
+            filter = { user: userId }; // Chỉ lọc những đơn hàng của user này
+        }
+
+        const orders = await Order.find(filter)
+            .populate('product')
+            .sort({ createdAt: -1 });
+
         res.json({ success: true, data: orders });
     } catch (err) {
-        res.status(500).json({ success: false, message: "Lỗi lấy dữ liệu" });
+        console.error("Lỗi lấy đơn hàng:", err);
+        res.status(500).json({ success: false, message: "Lỗi lấy dữ liệu đơn hàng" });
     }
 });
 
-// 2. [ADMIN] Lấy danh sách đơn hàng chờ duyệt (PROCESSING) hoặc đã duyệt (APPROVED)
-// Dùng cho giao diện Xuất kho của Admin (PB08)
+// 2. [ADMIN] LẤY ĐƠN THEO TRẠNG THÁI (Cho quản lý kho)
 router.get('/admin/status/:statusName', async (req, res) => {
     try {
         const status = req.params.statusName.toUpperCase();
@@ -25,26 +36,33 @@ router.get('/admin/status/:statusName', async (req, res) => {
     }
 });
 
-// 3. Tạo đơn hàng mới (Từ khách hàng)
+// 3. TẠO ĐƠN HÀNG MỚI (Cập nhật để lưu kèm User ID)
 router.post('/', async (req, res) => {
     try {
-        const { orderCode, product, quantity, totalPrice } = req.body;
+        const { product, quantity, totalPrice, userId, customerName } = req.body;
+
+        // Tự động tạo mã đơn hàng duy nhất dựa trên thời gian để tránh lỗi Duplicate Key
+        const autoOrderCode = `RL-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
         const newOrder = new Order({
-            orderCode: orderCode || `RL-${Math.floor(1000 + Math.random() * 9000)}`,
-            product,
-            quantity,
-            totalPrice,
-            status: 'PROCESSING', // Mặc định là chờ duyệt
-            customerName: "Khách hàng vãng lai"
+            orderCode: autoOrderCode,
+            product: product,    // ID của sản phẩm
+            user: userId,       // ID của người đặt hàng (để phân biệt giữa các tài khoản)
+            quantity: quantity,
+            totalPrice: totalPrice,
+            status: 'PROCESSING',
+            customerName: customerName || "Khách hàng vãng lai"
         });
+
         await newOrder.save();
         res.status(201).json({ success: true, data: newOrder });
     } catch (err) {
-        res.status(400).json({ success: false, message: err.message });
+        console.error("Lỗi tạo đơn hàng:", err.message);
+        res.status(400).json({ success: false, message: "Không thể tạo đơn hàng: " + err.message });
     }
 });
 
-// 4. [ADMIN] Duyệt đơn hàng (Chuyển sang APPROVED để hiện ở danh sách chờ xuất)
+// 4. [ADMIN] DUYỆT ĐƠN HÀNG (Chuyển sang APPROVED)
 router.patch('/:id/approve', async (req, res) => {
     try {
         const order = await Order.findByIdAndUpdate(
@@ -58,26 +76,26 @@ router.patch('/:id/approve', async (req, res) => {
     }
 });
 
-// 5. [ADMIN] Xác nhận xuất kho (Trừ tồn kho thật và chuyển sang COMPLETED)
+// 5. [ADMIN] XÁC NHẬN XUẤT KHO (Trừ tồn kho và chuyển COMPLETED)
 router.post('/:id/confirm-export', async (req, res) => {
     try {
         const order = await Order.findById(req.params.id);
         if (!order) return res.status(404).json({ message: "Đơn hàng không tồn tại" });
 
-        // Tìm sản phẩm và trừ số lượng trong kho
         const product = await Product.findById(order.product);
-        if (product.stock < order.quantity) {
-            return res.status(400).json({ success: false, message: "Kho không đủ hàng!" });
+        if (!product || product.stock < order.quantity) {
+            return res.status(400).json({ success: false, message: "Kho không đủ hàng hoặc sản phẩm không tồn tại!" });
         }
 
-        product.stock -= order.quantity; // Trừ kho
+        // Thực hiện trừ kho
+        product.stock -= order.quantity;
         await product.save();
 
-        // Cập nhật đơn hàng thành hoàn tất
+        // Hoàn tất đơn hàng
         order.status = 'COMPLETED';
         await order.save();
 
-        res.json({ success: true, message: "Đã xuất kho thành công!" });
+        res.json({ success: true, message: "Đã xuất kho thành công và cập nhật tồn kho!" });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }

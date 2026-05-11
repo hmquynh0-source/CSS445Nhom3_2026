@@ -1,96 +1,159 @@
-// server/routes/transactionRoutes.js
-
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 
-// Import các hàm từ Controller
-const { 
-    createTransaction, 
-    getTransactions 
-} = require('../controllers/TransactionController'); 
-
-// Import Middleware bảo vệ (Yêu cầu đăng nhập/Token)
+// Import các Middleware và Model
 const { protect } = require('../middleware/authMiddleware'); 
-
-// Import trực tiếp Model để thực hiện các câu lệnh truy vấn chi tiết
 const Transaction = require('../models/Transaction'); 
-
+const Product = require('../models/Product'); 
 
 // --- CÁC ROUTE GIAO DỊCH ---
 
 /**
- * @route   POST /api/transactions
- * @desc    Tạo giao dịch mới (Nhập hoặc Xuất kho)
- * @access  Private
+ * @route   POST /api/transactions/import
+ * @desc    Admin tạo yêu cầu NHẬP KHO (Gửi cho nhà cung cấp)
  */
-router.post('/', protect, createTransaction);
-
-/**
- * @route   GET /api/transactions
- * @desc    Lấy tất cả lịch sử giao dịch (Có thể dùng cho báo cáo chung)
- * @access  Private
- */
-router.get('/', protect, getTransactions);
-
-/**
- * @route   GET /api/transactions/pending
- * @desc    Lấy danh sách các đơn đang chờ duyệt (Dùng cho trang Phê duyệt)
- * @access  Private
- */
-router.get('/pending', protect, async (req, res) => {
+router.post('/import', protect, async (req, res) => {
     try {
-        const pendingRequests = await Transaction.find({ status: 'PENDING' });
-        res.json(pendingRequests);
+        const { productId, supplierId, quantity, price, warehouseId, note } = req.body;
+
+        if (!productId || !supplierId || !quantity || !price) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Vui lòng nhập đầy đủ: Sản phẩm, Nhà cung cấp, Số lượng và Giá." 
+            });
+        }
+
+        // Tạo mã định danh duy nhất (Có thể dùng mã bạn muốn hoặc timestamp)
+        const uniqueId = `REQ-IM-${Date.now()}`;
+
+        const newTransaction = new Transaction({
+            type: 'in', 
+            product: productId,
+            supplier: supplierId,
+            warehouse: mongoose.Types.ObjectId.isValid(warehouseId) ? warehouseId : null,
+            quantity: Number(quantity),
+            price: Number(price), 
+            totalPrice: Number(price) * Number(quantity),
+            status: 'PENDING', 
+            requestId: uniqueId,
+            notes: note || "Yêu cầu nhập kho mới",
+            user: req.user ? req.user.name : 'Admin'
+        });
+
+        await newTransaction.save();
+
+        res.status(201).json({ 
+            success: true, 
+            message: "Yêu cầu nhập kho đã được gửi tới Nhà cung cấp!", 
+            data: newTransaction 
+        });
+
     } catch (error) {
-        res.status(500).json({ message: "Lỗi khi lấy danh sách chờ duyệt" });
+        console.error("Lỗi tạo yêu cầu nhập kho:", error.message);
+        res.status(500).json({ success: false, message: "Lỗi Server: " + error.message });
     }
 });
 
 /**
- * @route   GET /api/transactions/:id
- * @desc    Lấy chi tiết một đơn hàng theo orderId (Dùng cho trang Lệnh giao hàng)
- * @access  Private
+ * @route   GET /api/transactions/pending
+ * @desc    Lấy danh sách các đơn đang chờ duyệt
  */
-router.get('/:id', protect, async (req, res) => {
+router.get('/pending', protect, async (req, res) => {
     try {
-        // Tìm theo trường 'orderId' (ví dụ: DO-SUP-2024-001) thay vì _id mặc định
-        const transaction = await Transaction.findOne({ 
-            $or: [
-                { orderId: req.params.id },
-                { requestId: req.params.id }
-            ]
-        });
+        const pendingRequests = await Transaction.find({ status: 'PENDING' })
+            .populate('product', 'name sku image')
+            .populate('supplier', 'name email')
+            .sort({ createdAt: -1 });
+            
+        res.json({ success: true, data: pendingRequests });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Lỗi khi lấy danh sách chờ duyệt" });
+    }
+});
+
+/**
+ * @route   GET /api/transactions/:requestId
+ * @desc    Tìm một giao dịch cụ thể theo mã requestId (Sửa lỗi 404)
+ */
+router.get('/:requestId', protect, async (req, res) => {
+    try {
+        // Tìm theo requestId thay vì _id của MongoDB
+        const transaction = await Transaction.findOne({ requestId: req.params.requestId })
+            .populate('product', 'name sku image category')
+            .populate('supplier', 'name email address phone');
 
         if (!transaction) {
-            return res.status(404).json({ message: "Không tìm thấy mã đơn này trong hệ thống" });
+            return res.status(404).json({ 
+                success: false, 
+                message: `Không tìm thấy lệnh giao hàng với mã: ${req.params.requestId}` 
+            });
         }
-        
-        res.json(transaction);
+
+        res.json({ success: true, data: transaction });
     } catch (error) {
-        res.status(500).json({ message: "Lỗi Server khi tìm dữ liệu đơn hàng" });
+        console.error("Lỗi lấy chi tiết đơn hàng:", error.message);
+        res.status(500).json({ success: false, message: "Lỗi Server khi tìm đơn hàng" });
     }
 });
 
 /**
  * @route   PATCH /api/transactions/:id/approve
- * @desc    Phê duyệt đơn hàng (Đổi status từ PENDING -> APPROVED)
- * @access  Private
+ * @desc    Phê duyệt đơn -> Cập nhật kho hàng
  */
 router.patch('/:id/approve', protect, async (req, res) => {
     try {
-        const transaction = await Transaction.findOneAndUpdate(
-            { $or: [{ orderId: req.params.id }, { requestId: req.params.id }] },
-            { status: 'APPROVED' },
-            { new: true }
-        );
-        
-        if (!transaction) {
-            return res.status(404).json({ message: "Không tìm thấy đơn để phê duyệt" });
+        const { id } = req.params;
+
+        // Kiểm tra xem là ObjectId hay requestId
+        let transaction;
+        if (mongoose.Types.ObjectId.isValid(id)) {
+            transaction = await Transaction.findById(id);
+        } else {
+            transaction = await Transaction.findOne({ requestId: id });
         }
         
-        res.json(transaction);
+        if (!transaction) {
+            return res.status(404).json({ success: false, message: "Không tìm thấy đơn hàng" });
+        }
+
+        if (transaction.status === 'APPROVED') {
+            return res.status(400).json({ success: false, message: "Đơn hàng này đã được duyệt rồi" });
+        }
+
+        // Cập nhật trạng thái
+        transaction.status = 'APPROVED';
+        await transaction.save();
+
+        // Cập nhật tồn kho thực tế của Sản phẩm
+        await Product.findByIdAndUpdate(transaction.product, {
+            $inc: { stock: transaction.quantity }
+        });
+
+        res.json({ 
+            success: true, 
+            message: "Phê duyệt thành công! Tồn kho đã được cập nhật.",
+            data: transaction 
+        });
     } catch (error) {
-        res.status(500).json({ message: "Lỗi khi phê duyệt đơn hàng" });
+        console.error("Lỗi phê duyệt:", error);
+        res.status(500).json({ success: false, message: "Lỗi Server khi phê duyệt" });
+    }
+});
+
+/**
+ * @route   GET /api/transactions
+ * @desc    Lấy tất cả lịch sử giao dịch
+ */
+router.get('/', protect, async (req, res) => {
+    try {
+        const transactions = await Transaction.find()
+            .populate('product', 'name sku')
+            .populate('supplier', 'name')
+            .sort({ createdAt: -1 });
+        res.json({ success: true, data: transactions });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Lỗi khi lấy lịch sử" });
     }
 });
 
