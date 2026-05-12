@@ -101,7 +101,9 @@ function App() {
     return (
         <>
             {/* ĐẶT Ở ĐÂY: Nó sẽ nằm ngoài hệ thống Routes và luôn hiển thị nếu người dùng đã đăng nhập */}
-            {isAuthenticated && <AIAssistantWidget />}
+             {isAuthenticated && userRole === 'admin' && (
+                <AIAssistantWidget />
+            )}
 
             <Routes>
                 {/* 1. PUBLIC ROUTES */}
