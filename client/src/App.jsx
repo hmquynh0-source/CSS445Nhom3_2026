@@ -6,6 +6,7 @@ import { RBACProvider } from './context/RBACContext';
 
 // Pages & Components
 import LoginPage from './pages/LoginPage';
+import AIAssistantWidget from './components/AIAssistantWidget'; // Đảm bảo import đúng
 import RegisterPage from './pages/RegisterPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import HomePage from './pages/HomePage';
@@ -40,10 +41,9 @@ import SupplierOrdersPage from './pages/SupplierOrdersPage';
 import SupplierInventoryPage from './pages/SupplierInventoryPage';
 import PersonalProfilePage from './pages/PersonalProfilePage'; 
 
-/** * Component bảo vệ Route theo vai trò 
- */
+/** * Component bảo vệ Route theo vai trò */
 const RoleProtectedRoute = ({ children, allowedRole }) => {
-    const { isAuthenticated, userRole, loading } = useAuth();
+    const { isAuthenticated, loading } = useAuth();
 
     if (loading) return (
         <div className="flex items-center justify-center h-screen bg-[#FDF8F3]">
@@ -55,12 +55,10 @@ const RoleProtectedRoute = ({ children, allowedRole }) => {
         return <Navigate to="/login" replace />;
     }
     
-    // Kiểm tra quyền truy cập (tùy chọn: có thể thêm logic check allowedRole cụ thể ở đây)
     return children;
 };
 
-/** * Wrapper cho khu vực Admin/Staff - Sử dụng chung DashboardLayout
- */
+/** * Wrapper cho khu vực Admin/Staff - Sử dụng chung DashboardLayout */
 const AdminLayoutWrapper = () => (
     <ErrorBoundary>
         <RBACProvider>
@@ -101,68 +99,72 @@ function App() {
     );
 
     return (
-        <Routes>
-            {/* 1. PUBLIC ROUTES */}
-            <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />} />
-            <Route path="/register" element={isAuthenticated ? <Navigate to="/" replace /> : <RegisterPage />} />
-            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-            <Route path="/logout-success" element={<LogoutSuccess />} />
+        <>
+            {/* ĐẶT Ở ĐÂY: Nó sẽ nằm ngoài hệ thống Routes và luôn hiển thị nếu người dùng đã đăng nhập */}
+            {isAuthenticated && <AIAssistantWidget />}
 
-            {/* 2. ROOT DISPATCHER - Điều hướng người dùng sau khi đăng nhập */}
-            <Route
-                path="/"
-                element={
-                    !isAuthenticated ? <Navigate to="/login" replace /> :
-                    userRole === 'supplier' ? <Navigate to="/supplier/dashboard" replace /> :
-                    userRole === 'customer' ? <Navigate to="/customer/dashboard" replace /> :
-                    <Navigate to="/admin/home" replace />
-                }
-            />
+            <Routes>
+                {/* 1. PUBLIC ROUTES */}
+                <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />} />
+                <Route path="/register" element={isAuthenticated ? <Navigate to="/" replace /> : <RegisterPage />} />
+                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                <Route path="/logout-success" element={<LogoutSuccess />} />
 
-            {/* 3. SUPPLIER AREA */}
-            <Route path="/supplier/*" element={
-                <RoleProtectedRoute allowedRole="supplier">
-                    <Routes>
-                        <Route element={<SupplierLayout />}>
-                            <Route path="dashboard" element={<SupplierDashboard />} />
-                            <Route path="approvals" element={<SupplierApprovalPage />} />
-                            <Route path="profile" element={<PersonalProfilePage />} />
-                            <Route path="orders" element={<SupplierOrdersPage />} />
-                            <Route path="inventory" element={<SupplierInventoryPage />} />
-                            <Route path="settings" element={<PersonalProfilePage />} />
-                            <Route path="*" element={<Navigate to="dashboard" replace />} />
-                        </Route>
-                    </Routes>
-                </RoleProtectedRoute>
-            } />
+                {/* 2. ROOT DISPATCHER */}
+                <Route
+                    path="/"
+                    element={
+                        !isAuthenticated ? <Navigate to="/login" replace /> :
+                        userRole === 'supplier' ? <Navigate to="/supplier/dashboard" replace /> :
+                        userRole === 'customer' ? <Navigate to="/customer/dashboard" replace /> :
+                        <Navigate to="/admin/home" replace />
+                    }
+                />
 
-            {/* 4. CUSTOMER AREA - Đã sửa lỗi Nesting */}
-            <Route path="/customer/*" element={
-                <RoleProtectedRoute allowedRole="customer">
-                    <Routes>
-                        <Route element={<CustomerLayout />}>
-                            <Route path="dashboard" element={<CustomerDashboard />} />
-                            <Route path="settings" element={<PersonalProfilePage />} />
-                            {/* Thêm các Route khác cho khách hàng tại đây */}
-                            <Route path="products" element={<CustomerProducts />} />
-                            <Route path="orders" element={<CustomerOrders />} />
-                            <Route path="ledger" element={<CustomerLedger />} />
-                            <Route path="*" element={<Navigate to="dashboard" replace />} />
-                        </Route>
-                    </Routes>
-                </RoleProtectedRoute>
-            } />
+                {/* 3. SUPPLIER AREA */}
+                <Route path="/supplier/*" element={
+                    <RoleProtectedRoute allowedRole="supplier">
+                        <Routes>
+                            <Route element={<SupplierLayout />}>
+                                <Route path="dashboard" element={<SupplierDashboard />} />
+                                <Route path="approvals" element={<SupplierApprovalPage />} />
+                                <Route path="profile" element={<PersonalProfilePage />} />
+                                <Route path="orders" element={<SupplierOrdersPage />} />
+                                <Route path="inventory" element={<SupplierInventoryPage />} />
+                                <Route path="settings" element={<PersonalProfilePage />} />
+                                <Route path="*" element={<Navigate to="dashboard" replace />} />
+                            </Route>
+                        </Routes>
+                    </RoleProtectedRoute>
+                } />
 
-            {/* 5. ADMIN/STAFF AREA */}
-            <Route path="/admin/*" element={
-                <RoleProtectedRoute allowedRole="staff">
-                    <AdminLayoutWrapper />
-                </RoleProtectedRoute>
-            } />
+                {/* 4. CUSTOMER AREA */}
+                <Route path="/customer/*" element={
+                    <RoleProtectedRoute allowedRole="customer">
+                        <Routes>
+                            <Route element={<CustomerLayout />}>
+                                <Route path="dashboard" element={<CustomerDashboard />} />
+                                <Route path="settings" element={<PersonalProfilePage />} />
+                                <Route path="products" element={<CustomerProducts />} />
+                                <Route path="orders" element={<CustomerOrders />} />
+                                <Route path="ledger" element={<CustomerLedger />} />
+                                <Route path="*" element={<Navigate to="dashboard" replace />} />
+                            </Route>
+                        </Routes>
+                    </RoleProtectedRoute>
+                } />
 
-            {/* 6. CATCH ALL - Xử lý các đường dẫn không tồn tại */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+                {/* 5. ADMIN/STAFF AREA */}
+                <Route path="/admin/*" element={
+                    <RoleProtectedRoute allowedRole="staff">
+                        <AdminLayoutWrapper />
+                    </RoleProtectedRoute>
+                } />
+
+                {/* 6. CATCH ALL */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+        </>
     );
 }
 

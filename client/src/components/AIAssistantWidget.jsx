@@ -1,239 +1,35 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { FaRobot, FaPaperPlane, FaChevronDown, FaChevronUp, FaTimes, FaSpinner } from 'react-icons/fa';
 import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
+import { 
+    FaPaperPlane, FaChevronDown, FaChevronUp, 
+    FaTimes, FaSpinner, FaCoffee, FaExclamationTriangle,
+    FaBoxOpen, FaTruckLoading, FaChartLine
+} from 'react-icons/fa';
 
 const AIAssistantWidget = () => {
-    const { token } = useAuth();
+    const { user, token } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
-    const [dataCache, setDataCache] = useState(null);
     const messagesEndRef = useRef(null);
-    const API_BASE_URL = 'http://localhost:5000/api';
 
-    // Fetch real data from backend
-    const fetchWarehouseData = async () => {
-        try {
-            const response = await axios.get(`${API_BASE_URL}/ai/warehouse-data`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+    // Tự động cuộn xuống cuối danh sách tin nhắn
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages, loading]);
 
-            if (response.data?.success) {
-                setDataCache(response.data.data);
-                return response.data.data;
-            }
-            return null;
-        } catch (error) {
-            console.error('Error fetching warehouse data:', error);
-            // Fallback: try to fetch individual endpoints
-            try {
-                const [productsRes, suppliersRes, transactionsRes] = await Promise.all([
-                    axios.get(`${API_BASE_URL}/products`, {
-                        headers: { Authorization: `Bearer ${token}` }
-                    }).catch(err => ({ data: { data: [] } })),
-                    axios.get(`${API_BASE_URL}/suppliers`, {
-                        headers: { Authorization: `Bearer ${token}` }
-                    }).catch(err => ({ data: { data: [] } })),
-                    axios.get(`${API_BASE_URL}/transactions`, {
-                        headers: { Authorization: `Bearer ${token}` }
-                    }).catch(err => ({ data: { data: [] } }))
-                ]);
-
-                const formattedData = {
-                    products: (productsRes.data?.data || []).map(p => ({
-                        id: p._id,
-                        name: p.name,
-                        sku: p.sku,
-                        quantity: p.stockQuantity || 0,
-                        price: p.costPrice || p.salePrice || 0,
-                        preferredSupplier: p.supplier?.name || 'N/A'
-                    })),
-                    suppliers: (suppliersRes.data?.data || []).map(s => ({
-                        id: s._id,
-                        name: s.name,
-                        contactPerson: s.contactName || s.contactPerson || '',
-                        phone: s.phone || '',
-                        email: s.email || ''
-                    })),
-                    transactions: (transactionsRes.data?.data || []).map(t => ({
-                        id: t._id,
-                        type: t.type === 'in' ? 'inbound' : 'outbound',
-                        quantity: t.quantity,
-                        unitPrice: t.price,
-                        supplierId: t.product?.supplier?._id || '',
-                        status: t.type === 'in' ? 'pending' : 'completed',
-                        createdAt: t.createdAt,
-                        productName: t.productName || t.product?.name || 'Unknown'
-                    }))
-                };
-
-                setDataCache(formattedData);
-                return formattedData;
-            } catch (fallbackError) {
-                console.error('Fallback fetch also failed:', fallbackError);
-                return null;
-            }
-        }
-    };
-
-    // AI Response generator with real data
-    const generateAIResponse = async (userMessage) => {
-        try {
-            const data = dataCache || await fetchWarehouseData();
-            if (!data) {
-                return '❌ Không thể tải dữ liệu kho. Vui lòng thử lại.';
-            }
-
-            const msg = userMessage.toLowerCase();
-
-            // 1. Low stock query - "Tồn thấp sp nào?"
-            if (msg.includes('tồn thấp') || msg.includes('sắp hết') || msg.includes('low stock') || msg.includes('hết hàng')) {
-                const lowStockProducts = data.products.filter(p => p.quantity < 50);
-                if (lowStockProducts.length === 0) {
-                    return '✅ Tất cả sản phẩm tồn kho dồi dào. Không có sản phẩm nào dưới 50 cái.';
-                }
-
-                let response = '⚠️ **SẢN PHẨM TỒN THẤP**\n\n';
-                lowStockProducts.slice(0, 5).forEach((p, idx) => {
-                    response += `${idx + 1}. **${p.name}** (${p.sku})\n`;
-                    response += `   📦 Tồn: ${p.quantity} cái\n`;
-                    response += `   💰 Tổng giá trị: ${((p.quantity * p.price) || 0).toLocaleString('vi-VN')} VNĐ\n`;
-                    response += `   🏭 NCC: ${p.preferredSupplier}\n\n`;
-                });
-                response += lowStockProducts.length > 5 ? `... và ${lowStockProducts.length - 5} sản phẩm khác\n\n` : '';
-                response += '💡 **Khuyến nghị:** Đặt ngay từ nhà cung cấp để tránh hết hàng!\n';
-                return response;
-            }
-
-            // 2. Pending orders query - "Đơn NCC nào đang chờ?"
-            if (msg.includes('đơn ncc') || msg.includes('pending order') || msg.includes('chờ') || msg.includes('chờ duyệt')) {
-                const inboundTransactions = data.transactions.filter(t => 
-                    t.type === 'inbound'
-                );
-
-                if (inboundTransactions.length === 0) {
-                    return '✅ Không có đơn ncc nào. Tất cả đơn hàng đã hoàn tất!';
-                }
-
-                let response = '⏳ **ĐƠN NCC ĐANG CHỜ**\n\n';
-                inboundTransactions.slice(0, 5).forEach((t, idx) => {
-                    response += `${idx + 1}. **PO#${t.id.toString().slice(-6).toUpperCase()}** - ${t.productName}\n`;
-                    response += `   📦 Số lượng: ${t.quantity} cái\n`;
-                    response += `   💰 Tổng tiền: ${((t.quantity * t.unitPrice) || 0).toLocaleString('vi-VN')} VNĐ\n`;
-                    response += `   ⏰ Ngày tạo: ${new Date(t.createdAt).toLocaleDateString('vi-VN')}\n`;
-                    response += `   📍 Trạng thái: ${t.status === 'pending' ? '⏳ Chờ duyệt' : '📝 Nháp'}\n\n`;
-                });
-                response += `💡 **Tổng:** ${inboundTransactions.length} đơn nhập kho\n`;
-                response += '🔔 **Action:** Vui lòng kiểm tra và duyệt các đơn này sớm nhất có thể!';
-                return response;
-            }
-
-            // 3. Revenue query - "Doanh thu tuần/tháng này?"
-            if (msg.includes('doanh thu') || msg.includes('revenue') || msg.includes('bán') || msg.includes('bán hàng')) {
-                const today = new Date();
-                const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay()));
-                const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-
-                const weeklyTransactions = data.transactions.filter(t => 
-                    t.type === 'outbound' && new Date(t.createdAt) >= startOfWeek
-                );
-
-                const monthlyTransactions = data.transactions.filter(t => 
-                    t.type === 'outbound' && new Date(t.createdAt) >= startOfMonth
-                );
-
-                const weeklyRevenue = weeklyTransactions.reduce((sum, t) => sum + ((t.quantity * t.unitPrice) || 0), 0);
-                const monthlyRevenue = monthlyTransactions.reduce((sum, t) => sum + ((t.quantity * t.unitPrice) || 0), 0);
-
-                // Calculate growth (mock: 25% for demo if not enough data)
-                const growth = weeklyTransactions.length > 0 ? 25 : 0;
-
-                let response = '📊 **PHÂN TÍCH DOANH THU**\n\n';
-                response += `📅 **Tuần này:** ${weeklyRevenue.toLocaleString('vi-VN')} VNĐ\n`;
-                response += `   📈 Số lượng bán: ${weeklyTransactions.length} đơn\n\n`;
-                response += `📈 **Tháng này:** ${monthlyRevenue.toLocaleString('vi-VN')} VNĐ\n`;
-                response += `   📈 Số lượng bán: ${monthlyTransactions.length} đơn\n`;
-                if (growth > 0) {
-                    response += `   ⬆️ Tăng ${growth}% so tuần trước! 🎉\n\n`;
-                } else {
-                    response += `   📊 Chưa có dữ liệu tuần trước\n\n`;
-                }
-                response += '💡 **Insight:** ' + (weeklyRevenue > 0 ? 'Hàng bán chạy, tồn kho cần bổ sung nhanh!' : 'Chưa có ghi nhận bán hàng tuần này.');
-                return response;
-            }
-
-            // 4. Supplier analysis - "NCC nào tốt nhất?"
-            if (msg.includes('nhà cung cấp') || msg.includes('ncc') || msg.includes('supplier')) {
-                if (data.suppliers.length === 0) {
-                    return '📭 Chưa có nhà cung cấp nào trong hệ thống.';
-                }
-
-                let response = '⭐ **PHÂN TÍCH NHÀ CUNG CẤP**\n\n';
-                
-                const supplierList = data.suppliers.slice(0, 3);
-                supplierList.forEach((s, idx) => {
-                    const supplierOrders = data.transactions.filter(t => 
-                        t.type === 'inbound'
-                    ).length; // Simple count - can be enhanced
-                    const onTimeRate = 98; // Mock percentage
-
-                    response += `${idx + 1}. **${s.name}**\n`;
-                    response += `   ✅ Giao đúng hạn: ${onTimeRate}%\n`;
-                    response += `   📞 Liên hệ: ${s.contactPerson || 'N/A'} - ${s.phone || 'N/A'}\n\n`;
-                });
-
-                response += '🏆 **Khuyến nghị:** Ưu tiên đặt hàng từ NCC hàng đầu để đảm bảo chuỗi cung ứng ổn định!';
-                return response;
-            }
-
-            // 5. Stock optimization - "Sắp xếp kho như thế nào?"
-            if (msg.includes('slotting') || msg.includes('sắp xếp') || msg.includes('tối ưu') || msg.includes('storage')) {
-                if (data.products.length === 0) {
-                    return '📭 Chưa có sản phẩm nào trong hệ thống.';
-                }
-
-                const topProducts = data.products.sort((a, b) => (b.quantity || 0) - (a.quantity || 0)).slice(0, 5);
-                
-                let response = '📦 **TỐI ƯU HÓA VỊ TRÍ KHO**\n\n';
-                response += '🔴 **Kệ A (Gần nhất - tần suất cao):**\n';
-                topProducts.slice(0, 2).forEach((p) => {
-                    response += `   • ${p.name} (${p.quantity} cái)\n`;
-                });
-                response += '\n🟡 **Kệ B (Giữa - tần suất vừa):**\n';
-                topProducts.slice(2, 4).forEach((p) => {
-                    response += `   • ${p.name} (${p.quantity} cái)\n`;
-                });
-                response += '\n🔵 **Kệ C (Xa - tần suất thấp):**\n';
-                response += `   • Các sản phẩm bán chậm\n`;
-                response += '\n✅ **Lợi ích:** Tiết kiệm 40% thời gian picking & packing!';
-                return response;
-            }
-
-            // Default response
-            return '🤔 Tôi hiểu bạn hỏi về:\n\n' +
-                   '❓ "Tồn thấp sp nào?" - Sản phẩm sắp hết hàng\n' +
-                   '❓ "Đơn NCC nào đang chờ?" - Đơn hàng nhập chờ xử lý\n' +
-                   '❓ "Doanh thu tuần/tháng?" - Thu nhập và thống kê bán hàng\n' +
-                   '❓ "NCC nào tốt?" - Phân tích nhà cung cấp\n' +
-                   '❓ "Sắp xếp kho?" - Tối ưu hóa không gian lưu trữ\n\n' +
-                   '💡 Bạn có thể rõ ràng hơn không?';
-        } catch (error) {
-            console.error('Error in AI response:', error);
-            return '❌ Lỗi xử lý. Vui lòng thử lại.';
-        }
-    };
-
-    // Handle send message
-    const handleSendMessage = async () => {
-        if (!input.trim() || loading) return;
+    // Hàm gửi tin nhắn và lấy dữ liệu thực tế từ Backend
+    const handleSendMessage = async (textOverride = null) => {
+        const messageText = textOverride || input;
+        if (!messageText.trim() || loading) return;
 
         const userMsg = {
             id: Date.now(),
             type: 'user',
-            content: input,
+            content: messageText,
             timestamp: new Date()
         };
 
@@ -242,24 +38,28 @@ const AIAssistantWidget = () => {
         setLoading(true);
 
         try {
-            // Add small delay to simulate thinking
-            await new Promise(resolve => setTimeout(resolve, 800));
-            
-            const aiResponse = await generateAIResponse(input);
+            // GỌI API THẬT (Thay URL nếu backend của bạn chạy port khác)
+            const response = await axios.post(
+                'http://localhost:5000/api/ai/chat', 
+                { message: messageText },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+
             const aiMsg = {
                 id: Date.now() + 1,
                 type: 'assistant',
-                content: aiResponse,
+                content: response.data.reply,
+                data: response.data.data || null, // Chứa mảng sản phẩm/nhà cung cấp thực tế
                 timestamp: new Date()
             };
 
             setMessages(prev => [...prev, aiMsg]);
         } catch (error) {
-            console.error('Error:', error);
+            console.error("AI Error:", error);
             setMessages(prev => [...prev, {
                 id: Date.now() + 1,
-                type: 'error',
-                content: '❌ Lỗi xử lý. Vui lòng thử lại.',
+                type: 'assistant',
+                content: "Hạt Cà Phê đang gặp chút sự cố kết nối với kho dữ liệu. Bạn thử lại sau nhé!",
                 timestamp: new Date()
             }]);
         } finally {
@@ -267,292 +67,262 @@ const AIAssistantWidget = () => {
         }
     };
 
-    // Auto-scroll to bottom
-    useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
-
-    // Fetch data on mount
-    useEffect(() => {
-        if (isOpen && !dataCache) {
-            fetchWarehouseData();
-        }
-    }, [isOpen]);
-
     return (
         <>
-            {/* Floating Button - Fixed on right side */}
-            <div style={{
-                position: 'fixed',
-                bottom: '30px',
-                right: '30px',
-                zIndex: 9999
-            }}>
-                {/* Chat Widget */}
+            <div style={{ position: 'fixed', bottom: '30px', right: '30px', zIndex: 9999 }}>
+                
+                {/* 1. CỬA SỔ CHAT */}
                 <div style={{
                     position: 'absolute',
-                    bottom: isOpen ? '80px' : '0',
+                    bottom: isOpen ? '90px' : '0',
                     right: '0',
-                    width: isMinimized ? '380px' : '380px',
-                    height: isMinimized ? '60px' : '500px',
+                    width: '380px',
+                    height: isMinimized ? '60px' : '550px',
                     background: 'white',
-                    borderRadius: '12px',
-                    boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+                    borderRadius: '24px',
+                    boxShadow: '0 15px 50px rgba(61, 43, 31, 0.25)',
                     display: isOpen ? 'flex' : 'none',
                     flexDirection: 'column',
                     overflow: 'hidden',
-                    transition: 'all 0.3s ease',
-                    animation: isOpen ? 'slideUp 0.3s ease' : 'slideDown 0.3s ease'
+                    transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                    border: '1px solid #efeae6',
+                    opacity: isOpen ? 1 : 0,
+                    transform: isOpen ? 'scale(1)' : 'scale(0.8)',
+                    transformOrigin: 'bottom right'
                 }}>
+                    
                     {/* Header */}
-                    <div style={{
-                        background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                        color: 'white',
-                        padding: '16px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        flexShrink: 0
-                    }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <FaRobot style={{ fontSize: '1.2rem' }} />
-                            <span style={{ fontWeight: '600', fontSize: '0.95rem' }}>AI Assistant 24/7</span>
+                    <div style={headerStyle} onClick={() => setIsMinimized(!isMinimized)}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div className="pulse-container">
+                                <FaCoffee style={{ fontSize: '1.4rem', color: '#f5ebe0' }} />
+                                <div className="online-dot"></div>
+                            </div>
+                            <div>
+                                <div style={{ fontWeight: '700', fontSize: '0.95rem' }}>Hạt Cà Phê AI</div>
+                                <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>Đang phân tích kho thực tế</div>
+                            </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            <button
-                                onClick={() => setIsMinimized(!isMinimized)}
-                                style={{
-                                    background: 'rgba(255,255,255,0.2)',
-                                    border: 'none',
-                                    color: 'white',
-                                    cursor: 'pointer',
-                                    fontSize: '1rem',
-                                    padding: '4px 8px',
-                                    borderRadius: '4px'
-                                }}
-                            >
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <button onClick={(e) => { e.stopPropagation(); setIsMinimized(!isMinimized); }} style={headerActionBtn}>
                                 {isMinimized ? <FaChevronUp /> : <FaChevronDown />}
                             </button>
-                            <button
-                                onClick={() => setIsOpen(false)}
-                                style={{
-                                    background: 'rgba(255,255,255,0.2)',
-                                    border: 'none',
-                                    color: 'white',
-                                    cursor: 'pointer',
-                                    fontSize: '1rem',
-                                    padding: '4px 8px',
-                                    borderRadius: '4px'
-                                }}
-                            >
+                            <button onClick={(e) => { e.stopPropagation(); setIsOpen(false); }} style={headerActionBtn}>
                                 <FaTimes />
                             </button>
                         </div>
                     </div>
 
-                    {/* Messages Area */}
                     {!isMinimized && (
                         <>
-                            <div style={{
-                                flex: 1,
-                                overflowY: 'auto',
-                                padding: '16px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '12px',
-                                background: '#f9fafb'
-                            }}>
+                            {/* Body */}
+                            <div style={chatBodyStyle}>
                                 {messages.length === 0 ? (
-                                    <div style={{
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        height: '100%',
-                                        textAlign: 'center',
-                                        color: '#9ca3af'
-                                    }}>
-                                        <FaRobot style={{ fontSize: '2.5rem', marginBottom: '12px', opacity: 0.3 }} />
-                                        <p style={{ margin: 0, fontSize: '0.85rem' }}>👋 Xin chào! Hỏi tôi về:</p>
-                                        <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', fontStyle: 'italic' }}>
-                                            Tồn kho • Đơn hàng • Doanh thu
+                                    <div style={{ textAlign: 'center', marginTop: '40px', padding: '0 20px' }}>
+                                        <div className="floating-icon">☕</div>
+                                        <p style={{ color: '#8b735b', fontSize: '0.9rem', fontWeight: '500', marginBottom: '20px' }}>
+                                            Chào {user?.name || 'Admin'}! <br/> Mình có thể giúp bạn kiểm tra kho ngay bây giờ.
                                         </p>
+                                        
+                                        {/* PHẦN GỢI Ý NHANH CỦA BẠN */}
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
+                                            <p style={{ fontSize: '0.7rem', color: '#a0aec0', width: '100%' }}>Gợi ý cho bạn:</p>
+                                            <button 
+                                                onClick={() => handleSendMessage("Sản phẩm nào sắp hết hàng?")}
+                                                style={suggestionBtn}
+                                            >
+                                                <FaExclamationTriangle style={{marginRight: '5px'}}/> Tồn kho thấp?
+                                            </button>
+                                            <button 
+                                                onClick={() => handleSendMessage("Thông tin liên hệ nhà cung cấp")}
+                                                style={suggestionBtn}
+                                            >
+                                                <FaTruckLoading style={{marginRight: '5px'}}/> Nhà cung cấp
+                                            </button>
+                                            <button 
+                                                onClick={() => handleSendMessage("Báo cáo doanh thu hôm nay")}
+                                                style={suggestionBtn}
+                                            >
+                                                <FaChartLine style={{marginRight: '5px'}}/> Doanh thu
+                                            </button>
+                                        </div>
                                     </div>
                                 ) : (
-                                    <>
-                                        {messages.map(msg => (
-                                            <div
-                                                key={msg.id}
-                                                style={{
-                                                    display: 'flex',
-                                                    justifyContent: msg.type === 'user' ? 'flex-end' : 'flex-start',
-                                                    gap: '8px'
-                                                }}
-                                            >
-                                                {msg.type === 'assistant' && (
-                                                    <FaRobot style={{
-                                                        fontSize: '0.9rem',
-                                                        color: '#6366f1',
-                                                        marginTop: '4px'
-                                                    }} />
+                                    messages.map((msg) => (
+                                        <div key={msg.id} style={messageWrapperStyle(msg.type)}>
+                                            {msg.type === 'assistant' && <div className="avatar-mini">☕</div>}
+                                            <div style={messageBoxStyle(msg.type)}>
+                                                {msg.content}
+
+                                                {/* HIỂN THỊ DỮ LIỆU THẬT DẠNG CARD (Nếu có data trả về từ API) */}
+                                                {msg.data && Array.isArray(msg.data) && (
+                                                    <div style={reportContainer}>
+                                                        {msg.data.map((item, idx) => (
+                                                            <div key={idx} style={reportCard}>
+                                                                <div style={{fontWeight: '600', color: '#3d2b1f'}}>{item.name}</div>
+                                                                <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginTop: '4px'}}>
+                                                                    <span>Tồn kho: <b style={{color: item.stockQuantity < 10 ? '#e53e3e' : '#38a169'}}>{item.stockQuantity} {item.unit}</b></span>
+                                                                    <span style={{color: '#718096'}}>SKU: {item.sku}</span>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                 )}
-                                                <div style={{
-                                                    maxWidth: '75%',
-                                                    padding: '10px 12px',
-                                                    borderRadius: '8px',
-                                                    background: msg.type === 'user' ? '#6366f1' : '#e5e7eb',
-                                                    color: msg.type === 'user' ? 'white' : '#1f2937',
-                                                    fontSize: '0.85rem',
-                                                    lineHeight: '1.4',
-                                                    wordWrap: 'break-word',
-                                                    whiteSpace: 'pre-wrap'
-                                                }}>
-                                                    {msg.content}
-                                                </div>
                                             </div>
-                                        ))}
-                                        {loading && (
-                                            <div style={{
-                                                display: 'flex',
-                                                justifyContent: 'flex-start',
-                                                gap: '8px'
-                                            }}>
-                                                <FaRobot style={{
-                                                    fontSize: '0.9rem',
-                                                    color: '#6366f1',
-                                                    animation: 'spin 1s linear infinite'
-                                                }} />
-                                                <div style={{
-                                                    padding: '10px 12px',
-                                                    borderRadius: '8px',
-                                                    background: '#e5e7eb',
-                                                    color: '#6b7280',
-                                                    fontSize: '0.85rem'
-                                                }}>
-                                                    ✍️ Đang suy nghĩ...
-                                                </div>
-                                            </div>
-                                        )}
-                                        <div ref={messagesEndRef} />
-                                    </>
+                                        </div>
+                                    ))
                                 )}
+                                {loading && (
+                                    <div style={{ display: 'flex', paddingLeft: '40px' }}>
+                                        <div className="typing-dots"><span></span><span></span><span></span></div>
+                                    </div>
+                                )}
+                                <div ref={messagesEndRef} />
                             </div>
 
                             {/* Input Area */}
-                            <div style={{
-                                padding: '12px',
-                                borderTop: '1px solid #e5e7eb',
-                                background: 'white',
-                                display: 'flex',
-                                gap: '8px'
-                            }}>
+                            <div style={inputAreaStyle}>
                                 <input
                                     type="text"
                                     value={input}
                                     onChange={(e) => setInput(e.target.value)}
-                                    onKeyPress={(e) => {
-                                        if (e.key === 'Enter' && !e.shiftKey) {
-                                            e.preventDefault();
-                                            handleSendMessage();
-                                        }
-                                    }}
-                                    placeholder="Hỏi gì đó..."
-                                    style={{
-                                        flex: 1,
-                                        padding: '8px 12px',
-                                        border: '1px solid #d1d5db',
-                                        borderRadius: '6px',
-                                        fontSize: '0.85rem',
-                                        outline: 'none'
-                                    }}
-                                    disabled={loading}
+                                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                                    placeholder="Hỏi về kho hàng, doanh thu..."
+                                    style={inputStyle}
                                 />
                                 <button
-                                    onClick={handleSendMessage}
+                                    onClick={() => handleSendMessage()}
                                     disabled={!input.trim() || loading}
-                                    style={{
-                                        padding: '8px 12px',
-                                        background: input.trim() && !loading ? '#6366f1' : '#d1d5db',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
-                                        fontSize: '0.85rem'
-                                    }}
+                                    style={sendBtnStyle(input)}
                                 >
-                                    {loading ? <FaSpinner style={{ animation: 'spin 1s linear infinite' }} /> : <FaPaperPlane />}
+                                    {loading ? <FaSpinner className="animate-spin" /> : <FaPaperPlane />}
                                 </button>
                             </div>
                         </>
                     )}
                 </div>
 
-                {/* Toggle Button */}
-                <button
-                    onClick={() => setIsOpen(!isOpen)}
-                    style={{
-                        width: '60px',
-                        height: '60px',
-                        borderRadius: '50%',
-                        background: isOpen ? '#ef4444' : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                        color: 'white',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: '1.5rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: '0 10px 30px rgba(99, 102, 241, 0.4)',
-                        transition: 'all 0.3s ease',
-                        transform: isOpen ? 'scale(0.9)' : 'scale(1)',
-                        zIndex: 10000
-                    }}
-                    onMouseOver={(e) => {
-                        if (!isOpen) e.target.style.transform = 'scale(1.1)';
-                    }}
-                    onMouseOut={(e) => {
-                        if (!isOpen) e.target.style.transform = 'scale(1)';
-                    }}
-                >
-                    {isOpen ? <FaTimes /> : <FaRobot />}
-                </button>
+                {/* 2. TRIGGER BUTTON (Bé Hạt Cà Phê Nhảy Nhảy) */}
+                {!isOpen && (
+                    <div onClick={() => setIsOpen(true)} className="coffee-bean-trigger" style={{ cursor: 'pointer', position: 'relative' }}>
+                        <div className="chat-tooltip">Kho hàng thế nào rồi bạn?</div>
+                        <div className="bean-shadow"></div>
+                        <div className="coffee-bean-avatar">
+                            <span style={{ fontSize: '2.2rem' }}>☕</span>
+                            <div className="bean-smile"></div>
+                        </div>
+                    </div>
+                )}
             </div>
 
-            {/* Add keyframe animations */}
+            {/* 3. CSS ANIMATIONS & EXTRA STYLES */}
             <style>{`
-                @keyframes slideUp {
-                    from {
-                        opacity: 0;
-                        transform: translateY(20px);
-                    }
-                    to {
-                        opacity: 1;
-                        transform: translateY(0);
-                    }
+                .coffee-bean-trigger { animation: coffee-bounce 2.5s infinite ease-in-out; }
+                @keyframes coffee-bounce {
+                    0%, 100% { transform: translateY(0) rotate(0deg); }
+                    50% { transform: translateY(-20px) rotate(8deg); }
                 }
-
-                @keyframes slideDown {
-                    from {
-                        opacity: 1;
-                        transform: translateY(0);
-                    }
-                    to {
-                        opacity: 0;
-                        transform: translateY(20px);
-                    }
+                .coffee-bean-avatar {
+                    width: 75px; height: 75px; background: #3d2b1f; border: 4px solid #6f4e37;
+                    border-radius: 55% 45% 55% 45% / 45% 55% 45% 55%;
+                    display: flex; align-items: center; justify-content: center;
+                    box-shadow: 0 10px 25px rgba(61, 43, 31, 0.3); position: relative; z-index: 2;
                 }
-
-                @keyframes spin {
-                    from {
-                        transform: rotate(0deg);
-                    }
-                    to {
-                        transform: rotate(360deg);
-                    }
+                .bean-smile { position: absolute; bottom: 18px; width: 12px; height: 6px; border-bottom: 2px solid white; border-radius: 0 0 10px 10px; }
+                .bean-shadow {
+                    position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%);
+                    width: 45px; height: 8px; background: rgba(0,0,0,0.15); border-radius: 50%;
+                    z-index: 1; animation: shadow-scale 2.5s infinite ease-in-out;
                 }
+                @keyframes shadow-scale {
+                    0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.3; }
+                    50% { transform: translateX(-50%) scale(0.5); opacity: 0.1; }
+                }
+                .chat-tooltip {
+                    position: absolute; left: -180px; top: 15px; background: #3d2b1f; color: white;
+                    padding: 8px 15px; border-radius: 12px; font-size: 0.8rem; width: 150px;
+                    text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.1); pointer-events: none;
+                }
+                .chat-tooltip::after {
+                    content: ''; position: absolute; right: -8px; top: 50%; transform: translateY(-50%);
+                    border-left: 8px solid #3d2b1f; border-top: 6px solid transparent; border-bottom: 6px solid transparent;
+                }
+                .typing-dots span {
+                    display: inline-block; width: 6px; height: 6px; background: #8b735b;
+                    border-radius: 50%; margin-right: 3px; animation: typing 1s infinite;
+                }
+                .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+                .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+                @keyframes typing { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+                .animate-spin { animation: spin 1s linear infinite; }
+                @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+                .avatar-mini { width: 30px; height: 30px; background: #3d2b1f; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; flex-shrink: 0; }
             `}</style>
         </>
     );
+};
+
+// --- STYLES OBJECTS ---
+const headerStyle = {
+    background: 'linear-gradient(135deg, #3d2b1f 0%, #6f4e37 100%)',
+    color: 'white', padding: '16px 20px', display: 'flex',
+    justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer'
+};
+
+const chatBodyStyle = {
+    flex: 1, overflowY: 'auto', padding: '20px',
+    display: 'flex', flexDirection: 'column', gap: '15px', background: '#fdfcfb'
+};
+
+const inputAreaStyle = {
+    padding: '20px', background: 'white', borderTop: '1px solid #f0ede9',
+    display: 'flex', gap: '10px'
+};
+
+const inputStyle = {
+    flex: 1, border: '1px solid #e2e8f0', borderRadius: '30px',
+    padding: '10px 20px', outline: 'none', fontSize: '0.9rem'
+};
+
+const sendBtnStyle = (input) => ({
+    width: '45px', height: '45px', borderRadius: '50%',
+    background: input.trim() ? '#3d2b1f' : '#d1d5db',
+    color: 'white', border: 'none', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.3s'
+});
+
+const headerActionBtn = {
+    background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white',
+    cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex'
+};
+
+const suggestionBtn = {
+    fontSize: '0.75rem', background: 'white', border: '1px solid #e2e8f0',
+    borderRadius: '20px', padding: '8px 15px', cursor: 'pointer',
+    color: '#6f4e37', fontWeight: '600', transition: 'all 0.2s',
+    display: 'flex', alignItems: 'center'
+};
+
+const messageWrapperStyle = (type) => ({
+    display: 'flex', justifyContent: type === 'user' ? 'flex-end' : 'flex-start',
+    alignItems: 'flex-end', gap: '8px'
+});
+
+const messageBoxStyle = (type) => ({
+    maxWidth: '80%', padding: '12px 16px',
+    borderRadius: type === 'user' ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
+    background: type === 'user' ? '#6f4e37' : '#f0ede9',
+    color: type === 'user' ? 'white' : '#3d2b1f',
+    fontSize: '0.9rem', lineHeight: '1.5', boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
+});
+
+const reportContainer = {
+    marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px'
+};
+
+const reportCard = {
+    background: 'white', borderRadius: '12px', padding: '10px',
+    border: '1px solid #e2e8f0', color: '#3d2b1f'
 };
 
 export default AIAssistantWidget;
