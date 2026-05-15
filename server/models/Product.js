@@ -1,55 +1,54 @@
-// server/models/Product.js
 const mongoose = require('mongoose');
 
-const ProductSchema = mongoose.Schema(
-    {
-        name: {
-            type: String,
-            required: [true, 'Tên sản phẩm là bắt buộc'],
-            trim: true,
-        },
-        sku: {
-            type: String,
-            required: [true, 'Mã SKU là bắt buộc'],
-            trim: true,
-        },
-        description: {
-            type: String,
-            trim: true,
-        },
-        image: {
-            type: String,
-            default: 'https://via.placeholder.com/150', 
-        },
-        category: {
-            type: String,
-            required: false,
-        },
-        supplier: {
-            type: String,
-            required: false,
-        },
-        salePrice: {
-            type: Number,
-            default: 0,
-        },
-        costPrice: {
-            type: Number,
-            default: 0,
-        },
-        stockQuantity: {
-            type: Number,
-            default: 0, // Mặc định là 0 nếu form không có ô nhập số lượng
-        },
-        unit: {
-            type: String,
-            default: 'Cái', // Nếu form không có ô nhập đơn vị tính, BE sẽ tự điền 'Cái'
-        },
+const productSchema = new mongoose.Schema({
+    name: {
+        type: String,
+        required: [true, 'Vui lòng nhập tên sản phẩm'],
+        trim: true
     },
-    {
-        timestamps: true,
+    sku: {
+        type: String,
+        required: [true, 'Vui lòng nhập mã SKU'],
+        unique: true,
+        trim: true
+    },
+    description: {
+        type: String,
+        default: ''
+    },
+    costPrice: {
+        type: Number,
+        default: 0
+    },
+    salePrice: {
+        type: Number,
+        default: 0
+    },
+    unit: {
+        type: String,
+        default: 'Bao 25kg'
+    },
+    stockQuantity: {
+        type: Number,
+        default: 0
+    },
+    image: {
+        type: String, // Lưu link ảnh hoặc base64
+        default: ''
+    },
+    // PHẦN QUAN TRỌNG NHẤT: Liên kết với model Category
+    category: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Category', 
+        required: false
+    },
+    supplier: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Supplier',
+        required: false
     }
-);
+}, {
+    timestamps: true
+});
 
-const Product = mongoose.model('Product', ProductSchema);
-module.exports = Product;
+module.exports = mongoose.model('Product', productSchema);
