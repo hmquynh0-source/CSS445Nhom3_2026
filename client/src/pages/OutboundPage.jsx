@@ -5,22 +5,20 @@ import {
 } from 'react-icons/fa';
 
 const OutboundPage = () => {
-    // 1. Quản lý dữ liệu
     const [orders, setOrders] = useState([]); 
     const [selectedOrder, setSelectedOrder] = useState(null); 
     const [loading, setLoading] = useState(true);
 
-    // 2. Lấy danh sách đơn hàng đã duyệt (APPROVED) từ API
+    // Lấy danh sách đơn hàng đã duyệt (APPROVED) từ API chuyên dụng của Admin
     const fetchOrders = async () => {
         try {
             setLoading(true);
-            // Lưu ý: Endpoint này phải trả về đơn hàng kèm thông tin sản phẩm (populate)
-            const res = await axios.get('http://localhost:5000/api/orders?status=APPROVED');
+            const res = await axios.get('http://localhost:5000/api/orders?status=APPROVED'); 
             if (res.data.success) {
                 setOrders(res.data.data);
             }
         } catch (err) {
-            console.error("Lỗi kết nối API:", err);
+            console.error("Lỗi kết nối API Admin Outbound:", err);
         } finally {
             setLoading(false);
         }
@@ -30,17 +28,15 @@ const OutboundPage = () => {
         fetchOrders();
     }, []);
 
-    // 3. Xử lý xác nhận xuất kho & Trừ tồn kho
+    // Xử lý xác nhận xuất kho
     const handleConfirmOutbound = async () => {
         if (!selectedOrder) return alert("Vui lòng chọn đơn hàng!");
 
         try {
-            // Gọi endpoint xử lý xuất kho (vừa đổi status vừa trừ kho trong DB)
             const res = await axios.post(`http://localhost:5000/api/orders/${selectedOrder._id}/confirm-export`);
             
             if (res.data.success) {
                 alert("XUẤT KHO THÀNH CÔNG!\nHệ thống đã cập nhật số lượng tồn kho thực tế.");
-                // Xóa đơn vừa xuất khỏi danh sách hiển thị
                 setOrders(orders.filter(o => o._id !== selectedOrder._id));
                 setSelectedOrder(null);
             }
@@ -76,7 +72,7 @@ const OutboundPage = () => {
                                     <thead>
                                         <tr style={styles.tableHeader}>
                                             <th style={{padding: '10px 0'}}>MÃ VẬN ĐƠN</th>
-                                            <th>KHÁCH HÀNG</th>
+                                            <th>SẢN PHẨM / KHÁCH HÀNG</th>
                                             <th>NGÀY DUYỆT</th>
                                             <th>TRẠNG THÁI</th>
                                             <th>HÀNH ĐỘNG</th>
@@ -84,14 +80,14 @@ const OutboundPage = () => {
                                     </thead>
                                     <tbody>
                                         {loading ? (
-                                            <tr><td colSpan="5" style={{textAlign:'center', padding:'20px'}}>Đang tải...</td></tr>
+                                            <tr><td colSpan="5" style={{textAlign:'center', padding:'20px'}}>Đang tải dữ liệu...</td></tr>
                                         ) : orders.map((order) => (
                                             <OrderRow 
                                                 key={order._id}
                                                 id={order.orderCode}
-                                                name={order.customerName || "Khách lẻ"}
-                                                sub={order.product?.category?.name || "Standard Export"}
-                                                date={new Date(order.updatedAt).toLocaleDateString()}
+                                                name={order.product?.name || order.customerName || "Sản phẩm cà phê"}
+                                                sub={`Mã KH: ${order.customerName || "Khách lẻ"}`}
+                                                date={new Date(order.updatedAt).toLocaleDateString('vi-VN')}
                                                 isSelected={selectedOrder?._id === order._id}
                                                 onSelect={() => setSelectedOrder(order)}
                                             />
@@ -118,30 +114,31 @@ const OutboundPage = () => {
                                 <div style={styles.productItem}>
                                     <div style={styles.productInfo}>
                                         <span style={styles.label}>MÃ SẢN PHẨM / SKU</span>
-                                        <p style={styles.skuText}>{selectedOrder.product?.sku || "SKU-GEN-001"}</p>
-                                        <p style={styles.productName}>{selectedOrder.product?.name}</p>
+                                        <p style={styles.skuText}>{selectedOrder.product?.sku || "BL-002"}</p>
+                                        <p style={styles.productName}>{selectedOrder.product?.name || selectedOrder.customerName}</p>
                                     </div>
                                     <div style={styles.statMini}>
                                         <span style={styles.label}>YÊU CẦU</span>
-                                        <p style={styles.valText}>{selectedOrder.quantity} <small>gói</small></p>
+                                        <p style={styles.valText}>{selectedOrder.quantity} <small>bao</small></p>
                                     </div>
                                     <div style={styles.statMini}>
-                                        <span style={styles.label}>TỒN KHO</span>
-                                        <p style={styles.valTextGreen}>{selectedOrder.product?.stock || 0} <small>gói</small></p>
+                                        <span style={styles.label}>TỒN KHO THỰC TẾ</span>
+                                        {/* Đọc trường productStock an toàn được bọc hậu từ Backend trả về */}
+                                        <p style={styles.valTextGreen}>{selectedOrder.productStock !== undefined ? selectedOrder.productStock : (selectedOrder.product?.stock || 0)} <small>bao</small></p>
                                     </div>
                                     <div style={styles.inputWrapper}>
                                         <span style={styles.label}>THỰC XUẤT</span>
                                         <input 
                                             type="text" 
                                             readOnly
-                                            value={selectedOrder.quantity} 
+                                            value={`${selectedOrder.quantity} bao`} 
                                             style={styles.inputBox} 
                                         />
                                     </div>
                                 </div>
                             ) : (
                                 <div style={{ padding: '40px', textAlign: 'center', backgroundColor: '#FDFCF0', borderRadius: '8px', border: '1px dashed #E5D5C5' }}>
-                                    <p style={{ color: '#A89B8D', fontWeight: 'bold' }}>Chọn một vận đơn ở danh sách phía trên để kiểm tra kho</p>
+                                    <p style={{ color: '#A89B8D', fontWeight: 'bold' }}>Chọn một vận đơn ở danh sách phía trên để kiểm tra số lượng tồn</p>
                                 </div>
                             )}
 
@@ -220,7 +217,6 @@ const OrderRow = ({ id, name, sub, date, onSelect, isSelected }) => (
     </tr>
 );
 
-// --- TOÀN BỘ STYLES GIỮ NGUYÊN TỪ BẢN GỐC CỦA BẠN ---
 const styles = {
     container: { display: 'flex', backgroundColor: '#F9F1E7', minHeight: '100vh', fontFamily: 'Inter, sans-serif', padding: '20px' },
     content: { flex: 1, padding: '10px 40px' },
@@ -254,7 +250,7 @@ const styles = {
     productName: { fontSize: '12px', color: '#6B5D4E', margin: 0 },
     valText: { fontSize: '18px', fontWeight: '800', margin: 0 },
     valTextGreen: { fontSize: '18px', fontWeight: '800', margin: 0, color: '#4F7942' },
-    inputBox: { width: '100%', padding: '10px', border: 'none', backgroundColor: '#E5D5C5', borderRadius: '4px', textAlign: 'center', fontWeight: 'bold', fontSize: '16px' },
+    inputBox: { width: '100%', padding: '10px', border: 'none', backgroundColor: '#E5D5C5', borderRadius: '4px', textAlign: 'center', fontWeight: 'bold', fontSize: '14px', color: '#3D2B1F' },
     confirmFooter: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '30px' },
     warningBox: { display: 'flex', alignItems: 'center', gap: '10px', fontSize: '10px', fontWeight: 'bold', color: '#6B5D4E' },
     btnGroup: { display: 'flex', gap: '15px' },
