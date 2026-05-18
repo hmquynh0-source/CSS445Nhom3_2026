@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   FaUserPlus, FaFileExport, FaSearch, 
-  FaPhoneAlt, FaMapMarkerAlt, FaTimes, FaPaperPlane 
+  FaPhoneAlt, FaMapMarkerAlt, FaTimes, FaPaperPlane, FaEdit
 } from 'react-icons/fa';
 import { Document, Packer, Paragraph, Table, TableRow, TableCell, WidthType } from 'docx';
 import { saveAs } from 'file-saver';
@@ -14,72 +14,110 @@ const CustomersPage = () => {
   const [activeTab, setActiveTab] = useState('Tất cả');
   const [searchTerm, setSearchTerm] = useState('');
   
-  // State cho Modal và Thông báo
+  // State cho Modal Thêm & Sửa
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false); // Phân biệt Thêm hay Sửa
   const [msgText, setMsgText] = useState('');
+  
   const [newCust, setNewCust] = useState({
     name: '', email: '', phone: '', address: '', type: 'Khách lẻ tiềm năng', director: ''
   });
 
-  // 1. Lấy dữ liệu từ MongoDB khi vào trang
   useEffect(() => {
     fetchCustomers();
   }, []);
 
   const fetchCustomers = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/customers');
-      setAllCustomers(res.data);
-      setDisplayCustomers(res.data);
-      if (res.data.length > 0) setSelectedCustomer(res.data[0]);
+      const token = localStorage.getItem('token');
+      const res = await axios.get('http://localhost:5000/api/customers', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const customersArray = res.data?.data || [];
+      setAllCustomers(customersArray);
+      setDisplayCustomers(customersArray);
+      if (customersArray.length > 0) {
+        setSelectedCustomer(customersArray[0]);
+      }
     } catch (error) {
-      console.error("Lỗi lấy dữ liệu:", error);
+      console.error("🚨 Lỗi lấy dữ liệu khách hàng:", error);
+      setAllCustomers([]);
+      setDisplayCustomers([]);
     }
   };
 
-  // 2. Logic Lọc dữ liệu
   useEffect(() => {
-    let filtered = allCustomers;
+    let filtered = Array.isArray(allCustomers) ? allCustomers : [];
     if (activeTab !== 'Tất cả') {
-      filtered = filtered.filter(c => c.type.includes(activeTab));
+      filtered = filtered.filter(c => c && c.type && c.type.includes(activeTab));
     }
     if (searchTerm) {
+      const lowerSearch = searchTerm.toLowerCase();
       filtered = filtered.filter(c => 
-        c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.email.toLowerCase().includes(searchTerm.toLowerCase())
+        (c.name && c.name.toLowerCase().includes(lowerSearch)) ||
+        (c.email && c.email.toLowerCase().includes(lowerSearch))
       );
     }
     setDisplayCustomers(filtered);
   }, [activeTab, searchTerm, allCustomers]);
 
-  // --- LOGIC LƯU KHÁCH HÀNG (API) ---
-  const saveCustomer = async (e) => {
+  // Mở modal ở chế độ Sửa và đổ dữ liệu cũ vào form
+  const openEditModal = (customer) => {
+    setIsEditMode(true);
+    setNewCust({
+      name: customer.name || '',
+      email: customer.email || '',
+      phone: customer.phone || '',
+      address: customer.address || '',
+      type: customer.type || 'Khách lẻ tiềm năng',
+      director: customer.director || ''
+    });
+    setIsModalOpen(true);
+  };
+
+  // --- LOGIC LƯU HOẶC SỬA KHÁCH HÀNG ---
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
     try {
-      // Bổ sung các trường mặc định nếu thiếu
-      const dataToSave = {
-        ...newCust,
-        initials: newCust.name.substring(0, 2).toUpperCase(),
-        total: "0đ",
-        lastDate: "Vừa xong"
-      };
+      const token = localStorage.getItem('token');
+      const headers = { Authorization: `Bearer ${token}` };
 
-      const response = await axios.post('http://localhost:5000/api/customers', dataToSave);
-      
-      // Cập nhật state local để hiển thị ngay lập tức
-      setAllCustomers([response.data, ...allCustomers]);
+      if (isEditMode) {
+        // --- CHẾ ĐỘ CẬP NHẬT (PUT) ---
+        const customerId = selectedCustomer._id || selectedCustomer.id;
+        const response = await axios.put(`http://localhost:5000/api/customers/${customerId}`, newCust, { headers });
+        const updatedData = response.data?.data || response.data;
+
+        // Cập nhật lại trong danh sách hiển thị cục bộ
+        setAllCustomers(prev => prev.map(c => (c._id === customerId || c.id === customerId) ? updatedData : c));
+        setSelectedCustomer(updatedData);
+        alert("🎉 Cập nhật thông tin đối tác thành công!");
+      } else {
+        // --- CHẾ ĐỘ THÊM MỚI (POST) ---
+        const dataToSave = {
+          ...newCust,
+          initials: newCust.name ? newCust.name.substring(0, 2).toUpperCase() : 'KH',
+          total: "0đ",
+          lastDate: "Vừa xong"
+        };
+        const response = await axios.post('http://localhost:5000/api/customers', dataToSave, { headers });
+        const createdCustomer = response.data?.data || response.data;
+
+        setAllCustomers(prev => [createdCustomer, ...prev]);
+        setSelectedCustomer(createdCustomer);
+        alert("🎉 Thêm đối tác mới thành công!");
+      }
+
       setIsModalOpen(false);
-      // Reset form
       setNewCust({ name: '', email: '', phone: '', address: '', type: 'Khách lẻ tiềm năng', director: '' });
-      alert("Thêm khách hàng thành công!");
     } catch (error) {
-      console.error("Lỗi:", error);
-      alert("Không thể lưu vào Database! Vui lòng kiểm tra Server.");
+      console.error("🚨 Lỗi xử lý dữ liệu khách hàng:", error);
+      alert(error.response?.data?.message || "Thao tác thất bại! Vui lòng kiểm tra lại server.");
     }
   };
 
-  // --- LOGIC XUẤT FILE WORD ---
   const handleExportWord = () => {
+    if (!displayCustomers.length) return alert("Không có dữ liệu để xuất!");
     const table = new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
       rows: [
@@ -96,7 +134,7 @@ const CustomersPage = () => {
             new TableCell({ children: [new Paragraph(c.name || "")] }),
             new TableCell({ children: [new Paragraph(c.type || "")] }),
             new TableCell({ children: [new Paragraph(c.phone || "")] }),
-            new TableCell({ children: [new Paragraph(c.total || "")] }),
+            new TableCell({ children: [new Paragraph(c.total || "0đ")] }),
           ],
         })),
       ],
@@ -105,22 +143,20 @@ const CustomersPage = () => {
     const doc = new Document({
       sections: [{
         children: [
-          new Paragraph({ text: "DANH SÁCH KHÁCH HÀNG & ĐỐI TÁC", heading: "Heading1" }),
+          new Paragraph({ text: "DANH SÁCH KHÁCH HÀNG & ĐỐI TÁC WAREHOUSE", heading: "Heading1" }),
           new Paragraph({ text: `Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}\n` }),
           table
         ],
       }],
     });
 
-    Packer.toBlob(doc).then(blob => {
-      saveAs(blob, "Danh_Sach_Khach_Hang.docx");
-    });
+    Packer.toBlob(doc).then(blob => saveAs(blob, "Danh_Sach_Khach_Hang.docx"));
   };
 
-  // --- LOGIC GỬI THÔNG BÁO ---
   const handleSendNoti = () => {
-    if (!msgText.trim()) return alert("Vui lòng nhập nội dung thông báo!");
-    alert(`[Hệ thống] Đang gửi đến ${selectedCustomer.email}:\n\n"${msgText}"`);
+    if (!selectedCustomer) return alert("Vui lòng chọn một đối tác!");
+    if (!msgText.trim()) return alert("Vui lòng nhập nội dung!");
+    alert(`[Hệ thống] Gửi đến ${selectedCustomer.email}:\n\n"${msgText}"`);
     setMsgText('');
   };
 
@@ -133,13 +169,13 @@ const CustomersPage = () => {
         </div>
         <div style={styles.headerActions}>
           <button style={styles.exportBtn} onClick={handleExportWord}><FaFileExport /> Xuất file Word</button>
-          <button style={styles.addBtn} onClick={() => setIsModalOpen(true)}><FaUserPlus /> Thêm khách hàng mới</button>
+          <button style={styles.addBtn} onClick={() => { setIsEditMode(false); setNewCust({ name: '', email: '', phone: '', address: '', type: 'Khách lẻ tiềm năng', director: '' }); setIsModalOpen(true); }}><FaUserPlus /> Thêm khách hàng mới</button>
         </div>
       </div>
 
       <div style={styles.statsRow}>
         <StatCard label="TỔNG SỐ KHÁCH HÀNG" value={allCustomers.length} trend="+12% tháng này" />
-        <StatCard label="ĐỐI TÁC CHIẾN LƯỢC" value={allCustomers.filter(c => c.type === 'Đối tác thu mua').length} trend="ỔN ĐỊNH" />
+        <StatCard label="ĐỐI TÁC CHIẾN LƯỢC" value={allCustomers.filter(c => c && c.type === 'Đối tác thu mua').length} trend="ỔN ĐỊNH" />
         <StatCard label="DOANH THU KỲ VỌNG" value="4.2B" subValue="VND" trend="Q4 Outlook" />
       </div>
 
@@ -154,7 +190,8 @@ const CustomersPage = () => {
               ))}
             </div>
             <div style={styles.searchContainer}>
-              <FaSearch color="#A89B8D" /><input type="text" placeholder="Tìm kiếm..." style={styles.searchInput} onChange={(e) => setSearchTerm(e.target.value)} />
+              <FaSearch color="#A89B8D" />
+              <input type="text" placeholder="Tìm kiếm..." style={styles.searchInput} onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
           </div>
 
@@ -168,42 +205,43 @@ const CustomersPage = () => {
           {displayCustomers.length > 0 ? (
             displayCustomers.map((c) => (
               <div key={c._id || c.id} onClick={() => setSelectedCustomer(c)}>
-                <CustomerItem {...c} active={selectedCustomer?._id === c._id || selectedCustomer?.id === c.id} />
+                <CustomerItem {...c} active={(selectedCustomer?._id === c._id || selectedCustomer?.id === c.id)} />
               </div>
             ))
           ) : (
-            <div style={{textAlign:'center', padding:'50px', color:'#A89B8D'}}>Chưa có dữ liệu khách hàng.</div>
+            <div style={{textAlign:'center', padding:'50px', color:'#A89B8D'}}>Chưa tìm thấy dữ liệu phù hợp.</div>
           )}
         </div>
 
         <aside style={styles.detailSidebar}>
-          {selectedCustomer && (
+          {selectedCustomer ? (
             <>
               <div style={styles.detailHeader}>
-                 <div style={styles.detailAvatar}>{selectedCustomer.logo || selectedCustomer.initials}</div>
+                 <div style={styles.detailAvatar}>{selectedCustomer.logo || selectedCustomer.initials || 'KH'}</div>
                  <h3 style={styles.detailName}>{selectedCustomer.name}</h3>
                  <p style={styles.detailSub}>{selectedCustomer.type}</p>
               </div>
+              
+              {/* 🚀 NÚT BẤM CHỈNH SỬA THÔNG TIN KHÁCH HÀNG */}
+              <button style={styles.editBtn} onClick={() => openEditModal(selectedCustomer)}>
+                <FaEdit /> Chỉnh sửa thông tin
+              </button>
+
               <div style={styles.detailInfoBox}>
                 <p style={styles.infoTitle}>THÔNG TIN LIÊN HỆ</p>
-                <p style={styles.infoItem}><FaUserPlus /> <b>{selectedCustomer.director}</b></p>
-                <p style={styles.infoItem}><FaPhoneAlt /> {selectedCustomer.phone}</p>
-                <p style={styles.infoItem}><FaMapMarkerAlt /> {selectedCustomer.address}</p>
+                <p style={styles.infoItem}><FaUserPlus /> Đại diện: <b>{selectedCustomer.director || 'Chưa cập nhật'}</b></p>
+                <p style={styles.infoItem}><FaPhoneAlt /> SĐT: {selectedCustomer.phone || 'Chưa cập nhật'}</p>
+                <p style={styles.infoItem}><FaMapMarkerAlt /> ĐC: {selectedCustomer.address || 'Chưa cập nhật'}</p>
               </div>
 
               <div style={styles.notiBox}>
                 <p style={styles.infoTitle}>GỬI THÔNG BÁO NHANH</p>
-                <textarea 
-                    style={styles.textArea} 
-                    placeholder="Nhập nội dung ưu đãi..."
-                    value={msgText}
-                    onChange={(e) => setMsgText(e.target.value)}
-                />
-                <button style={styles.sendBtn} onClick={handleSendNoti}>
-                    <FaPaperPlane /> Gửi ngay
-                </button>
+                <textarea style={styles.textArea} placeholder="Nhập nội dung ưu đãi..." value={msgText} onChange={(e) => setMsgText(e.target.value)} />
+                <button style={styles.sendBtn} onClick={handleSendNoti}><FaPaperPlane /> Gửi ngay</button>
               </div>
             </>
+          ) : (
+            <div style={{textAlign: 'center', color: '#A89B8D', padding: '20px 0'}}>Vui lòng chọn khách hàng.</div>
           )}
         </aside>
       </div>
@@ -212,26 +250,28 @@ const CustomersPage = () => {
         <div style={styles.modalOverlay}>
           <div style={styles.modalContent}>
             <div style={{display:'flex', justifyContent:'space-between', marginBottom:'20px'}}>
-              <h3 style={{margin:0}}>Thêm đối tác mới</h3>
+              <h3 style={{margin:0, color: '#3D2B1F'}}>{isEditMode ? "Cập nhật đối tác" : "Thêm đối tác mới"}</h3>
               <FaTimes onClick={() => setIsModalOpen(false)} style={{cursor:'pointer'}} />
             </div>
-            <form onSubmit={saveCustomer}>
-              <input style={styles.input} placeholder="Tên công ty/Khách hàng" required value={newCust.name} onChange={e => setNewCust({...newCust, name: e.target.value})} />
+            <form onSubmit={handleFormSubmit}>
+              <input style={styles.input} placeholder="Tên công ty / Khách hàng" required value={newCust.name} onChange={e => setNewCust({...newCust, name: e.target.value})} />
               <div style={{display:'flex', gap:'10px'}}>
                 <input style={styles.input} placeholder="Email" type="email" required value={newCust.email} onChange={e => setNewCust({...newCust, email: e.target.value})} />
-                <input style={styles.input} placeholder="SĐT" required value={newCust.phone} onChange={e => setNewCust({...newCust, phone: e.target.value})} />
+                <input style={styles.input} placeholder="Số điện thoại" required value={newCust.phone} onChange={e => setNewCust({...newCust, phone: e.target.value})} />
               </div>
               <input style={styles.input} placeholder="Địa chỉ" value={newCust.address} onChange={e => setNewCust({...newCust, address: e.target.value})} />
               <input style={styles.input} placeholder="Người đại diện" value={newCust.director} onChange={e => setNewCust({...newCust, director: e.target.value})} />
               
-              <label style={{fontSize:'12px', color:'#A89B8D'}}>Phân loại:</label>
+              <label style={{fontSize:'12px', color:'#A89B8D', display: 'block', marginBottom: '5px'}}>Phân loại:</label>
               <select style={styles.input} value={newCust.type} onChange={e => setNewCust({...newCust, type: e.target.value})}>
                 <option value="Khách lẻ tiềm năng">Khách lẻ tiềm năng</option>
                 <option value="Khách hàng thân thiết">Khách hàng thân thiết</option>
                 <option value="Đối tác thu mua">Đối tác thu mua</option>
               </select>
 
-              <button type="submit" style={styles.saveBtn}>HOÀN TẤT LƯU DATABASE</button>
+              <button type="submit" style={styles.saveBtn}>
+                {isEditMode ? "XÁC NHẬN CẬP NHẬT" : "HOÀN TẤT LƯU DATABASE"}
+              </button>
             </form>
           </div>
         </div>
@@ -240,11 +280,10 @@ const CustomersPage = () => {
   );
 };
 
-// Sub-components
 const StatCard = ({ label, value, subValue, trend }) => (
   <div style={styles.statCard}>
     <p style={styles.statLabel}>{label}</p>
-    <h2 style={styles.statValue}>{value} <span style={{fontSize: '14px'}}>{subValue}</span></h2>
+    <h2 style={styles.statValue}>{value} {subValue && <span style={{fontSize: '14px'}}>{subValue}</span>}</h2>
     <p style={styles.statTrend}>{trend}</p>
   </div>
 );
@@ -252,15 +291,15 @@ const StatCard = ({ label, value, subValue, trend }) => (
 const CustomerItem = ({ initials, logo, name, email, type, lastDate, total, active }) => (
   <div style={{...styles.listItem, backgroundColor: active ? '#F9F1E7' : 'transparent'}}>
     <div style={{flex: 2, display: 'flex', alignItems: 'center', gap: '15px'}}>
-      <div style={styles.avatar}>{logo || initials}</div>
+      <div style={styles.avatar}>{logo || initials || 'KH'}</div>
       <div>
         <p style={styles.itemName}>{name}</p>
         <p style={styles.itemEmail}>{email}</p>
       </div>
     </div>
-    <div style={{flex: 1, fontSize: '11px', fontWeight: 'bold', color: '#8B5E3C'}}>{type}</div>
-    <div style={{flex: 1, fontSize: '11px', color: '#70645C'}}>{lastDate}</div>
-    <div style={{flex: 1, fontSize: '14px', fontWeight: 'bold', color: '#3D2B1F'}}>{total}</div>
+    <div style={{flex: 1, fontSize: '11px', fontWeight: 'bold', color: '#8B5E3C'}}>{type || 'Khách lẻ'}</div>
+    <div style={{flex: 1, fontSize: '11px', color: '#70645C'}}>{lastDate || 'Vừa xong'}</div>
+    <div style={{flex: 1, fontSize: '14px', fontWeight: 'bold', color: '#3D2B1F'}}>{total || '0đ'}</div>
   </div>
 );
 
@@ -287,21 +326,25 @@ const styles = {
   searchInput: { border: 'none', background: 'transparent', outline: 'none' },
   tableHeader: { display: 'flex', padding: '15px', fontSize: '11px', fontWeight: 'bold', color: '#A89B8D', borderBottom: '1px solid #E5D5C5' },
   listItem: { display: 'flex', padding: '20px 15px', alignItems: 'center', borderBottom: '1px solid #F1F1F1', cursor: 'pointer' },
-  avatar: { width: '40px', height: '40px', borderRadius: '8px', backgroundColor: '#E5D5C5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' },
-  itemName: { margin: 0, fontWeight: 'bold' },
+  avatar: { width: '40px', height: '40px', borderRadius: '8px', backgroundColor: '#E5D5C5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: '#3D2B1F' },
+  itemName: { margin: 0, fontWeight: 'bold', color: '#3D2B1F' },
   itemEmail: { margin: 0, fontSize: '12px', color: '#A89B8D' },
-  detailSidebar: { flex: 1, backgroundColor: 'white', padding: '30px', borderRadius: '15px', height: 'fit-content' },
-  detailAvatar: { width: '60px', height: '60px', borderRadius: '12px', backgroundColor: '#F9F1E7', fontSize: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px' },
-  detailName: { textAlign: 'center', margin: 0 },
-  detailSub: { textAlign: 'center', fontSize: '12px', color: '#A89B8D', marginBottom: '30px' },
-  infoTitle: { fontSize: '10px', fontWeight: 'bold', color: '#A89B8D', marginBottom: '10px' },
-  infoItem: { fontSize: '13px', marginBottom: '10px' },
-  textArea: { width: '100%', height: '80px', borderRadius: '8px', border: '1px solid #E5D5C5', padding: '10px', boxSizing: 'border-box', fontSize: '12px' },
-  sendBtn: { width: '100%', padding: '12px', marginTop: '10px', backgroundColor: '#3D2B1F', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' },
+  detailSidebar: { flex: 1, backgroundColor: 'white', padding: '30px', borderRadius: '15px', height: 'fit-content', border: '1px solid #F1E9DE' },
+  detailAvatar: { width: '60px', height: '60px', borderRadius: '12px', backgroundColor: '#F9F1E7', fontSize: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px', fontWeight: 'bold', color: '#3D2B1F' },
+  detailName: { textAlign: 'center', margin: 0, color: '#3D2B1F' },
+  detailSub: { textAlign: 'center', fontSize: '12px', color: '#A89B8D', marginBottom: '15px' },
+  
+  // Style nút Edit cao cấp
+  editBtn: { width: '100%', padding: '10px', marginBottom: '20px', backgroundColor: '#FFF9F3', color: '#8B5E3C', border: '1px solid #E5D5C5', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 'bold', fontSize: '12px' },
+  
+  infoTitle: { fontSize: '10px', fontWeight: 'bold', color: '#A89B8D', marginBottom: '10px', letterSpacing: '0.5px' },
+  infoItem: { fontSize: '13px', marginBottom: '12px', color: '#555', display: 'flex', alignItems: 'center', gap: '8px' },
+  textArea: { width: '100%', height: '80px', borderRadius: '8px', border: '1px solid #E5D5C5', padding: '10px', boxSizing: 'border-box', fontSize: '12px', outline: 'none', resize: 'none' },
+  sendBtn: { width: '100%', padding: '12px', marginTop: '10px', backgroundColor: '#3D2B1F', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', fontWeight: 'bold' },
   modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
-  modalContent: { backgroundColor: 'white', padding: '30px', borderRadius: '20px', width: '450px' },
-  input: { width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '8px', border: '1px solid #E5D5C5', boxSizing: 'border-box' },
-  saveBtn: { width: '100%', padding: '12px', backgroundColor: '#3D2B1F', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }
+  modalContent: { backgroundColor: 'white', padding: '30px', borderRadius: '20px', width: '450px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' },
+  input: { width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '8px', border: '1px solid #E5D5C5', boxSizing: 'border-box', outline: 'none' },
+  saveBtn: { width: '100%', padding: '12px', backgroundColor: '#3D2B1F', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', letterSpacing: '0.5px' }
 };
 
 export default CustomersPage;
