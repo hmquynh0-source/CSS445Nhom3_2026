@@ -128,7 +128,7 @@ const DashboardLayout = ({ children }) => {
           <div>
             <MenuItem
               icon={<FaUsers />}
-              label="Quản lý nhà cung ứng"
+              label="Quản lý tài khoản"
               active={isAccountPath && !isAccountMenuOpen}
               collapsed={isCollapsed}
               onClick={() => setIsAccountMenuOpen(!isAccountMenuOpen)}
@@ -153,6 +153,12 @@ const DashboardLayout = ({ children }) => {
                   label="Khách hàng"
                   active={location.pathname.includes('/admin/customers')}
                   onClick={() => navigate('/admin/customers')}
+                />
+                {/* 🛠️ THÊM MỤC QUẢN LÝ NHÂN SỰ VÀO ĐÂY */}
+                <SubMenuItem
+                  label="Nhân sự ban quản lý"
+                  active={location.pathname.includes('/admin/staff')}
+                  onClick={() => navigate('/admin/staff')}
                 />
               </div>
             )}

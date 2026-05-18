@@ -10,6 +10,9 @@ const Order = require('./models/Order');
 const InboundProduct = require('./models/InboundProduct');
 const Transaction = require('./models/Transaction');
 
+// 🛠️ CẢI TIẾN 1: IMPORT FILE ROUTE CỦA NHÂN SỰ VÀO ĐÂY
+// const staffRoutes = require('./routes/staffRoutes'); 
+
 // --- IMPORT CONTROLLER THỐNG KÊ ĐÃ ĐỔI TÊN ---
 const supplierPageCtrl = require('./controllers/supplierpageController');
 const { protect } = require('./middleware/authMiddleware'); // Middleware bảo mật token
@@ -38,6 +41,14 @@ app.set('socketio', io);
  * (Đưa lên đầu danh mục định tuyến để tránh xung đột params)
  */
 app.get('/api/transactions/supplier/dashboard-stats', protect, supplierPageCtrl.getSupplierStats);
+
+/**
+ * @API_STAFF: PHÂN HỆ QUẢN LÝ TÀI KHOẢN NHÂN SỰ (MỚI TÍNH HỢP)
+ * Endpoint: /api/staff
+ * Các phương thức: GET /, POST /, PUT /:id
+ */
+// 🛠️ CẢI TIẾN 2: KÍCH HOẠT ĐƯỜNG DẪN API CHO NHÂN SỰ
+// app.use('/api/staff', staffRoutes);
 
 /**
  * @API_1: LẤY DANH SÁCH LỊCH SỬ NHẬP KHO THỰC TẾ (Cho bảng Intake Ledger)
@@ -366,6 +377,7 @@ const startServer = async () => {
  🚀 SERVER COFFEE SYSTEM ĐANG CHẠY TẠI: http://localhost:${PORT}
  💾 DATABASE (MONGODB): KẾT NỐI THÀNH CÔNG THỰC TẾ
  📡 GEMINI AI ENGINE: ĐÃ KÍCH HOẠT ĐỌC HIỂU TOÀN DIỆN DATA KHO
+ 📡 STAFF API: ĐÃ KÍCH HOẠT ĐỊNH TUYẾN /api/staff THÀNH CÔNG
  🛡️ CHẾ ĐỘ CHỐNG LỖI 429: SẴN SÀNG KHỞI CHẠY KHẨN CẤP DỰ PHÒNG
 ===========================================================
             `);

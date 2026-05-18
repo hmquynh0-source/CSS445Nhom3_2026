@@ -41,6 +41,7 @@ import SupplierApprovalPage from './pages/SupplierApprovalPage';
 import SupplierOrdersPage from './pages/SupplierOrdersPage';
 import SupplierInventoryPage from './pages/SupplierInventoryPage';
 import PersonalProfilePage from './pages/PersonalProfilePage';
+import StaffPage from './pages/StaffPage';
 
 /** * Component bảo vệ Route theo vai trò */
 const RoleProtectedRoute = ({ children, allowedRole }) => {
@@ -70,6 +71,7 @@ const AdminLayoutWrapper = () => (
                         <Route path="products" element={<ProductsPage />} />
                         <Route path="suppliers" element={<SuppliersPage />} />
                         <Route path="customers" element={<CustomerPage />} />
+                        <Route path="staff" element={<StaffPage />} />
                         <Route path="categories" element={<CategoriesPage />} />
                         <Route path="inbound">
                             {/* /admin/inbound/orders */}

@@ -11,6 +11,9 @@ const supplierRoutes = require('./routes/supplierRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 
+// 🛠️ CẶP NHẬT: IMPORT ROUTE CỦA PHÂN HỆ NHÂN SỰ
+const staffRoutes = require('./routes/staffRoutes');
+
 const app = express();
 
 // --- 2. MIDDLEWARE ---
@@ -26,6 +29,9 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/ai', aiRoutes);
+
+// 🛠️ CẬP NHẬT: KÍCH HOẠT ENDPOINT CHÍNH THỨC CHO QUÂN LÝ NHÂN SỰ
+app.use('/api/staff', staffRoutes);
 
 // Export app để server.js sử dụng
 module.exports = app;
