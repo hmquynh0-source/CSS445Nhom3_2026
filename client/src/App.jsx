@@ -33,13 +33,14 @@ import LogoutSuccess from './pages/LogoutSuccess';
 import DashboardLayout from './components/DashboardLayout';
 import ErrorBoundary from './components/ErrorBoundary';
 import InboundPage from './pages/InboundPage';
+import InboundProductsPage from './pages/InboundProductsPage';
 import OutboundPage from './pages/OutboundPage';
 import ProcessingPage from './pages/ProcessingPage';
 import SupplierLayout from './components/SupplierLayout';
 import SupplierApprovalPage from './pages/SupplierApprovalPage';
 import SupplierOrdersPage from './pages/SupplierOrdersPage';
 import SupplierInventoryPage from './pages/SupplierInventoryPage';
-import PersonalProfilePage from './pages/PersonalProfilePage'; 
+import PersonalProfilePage from './pages/PersonalProfilePage';
 
 /** * Component bảo vệ Route theo vai trò */
 const RoleProtectedRoute = ({ children, allowedRole }) => {
@@ -54,7 +55,7 @@ const RoleProtectedRoute = ({ children, allowedRole }) => {
     if (!isAuthenticated) {
         return <Navigate to="/login" replace />;
     }
-    
+
     return children;
 };
 
@@ -70,7 +71,12 @@ const AdminLayoutWrapper = () => (
                         <Route path="suppliers" element={<SuppliersPage />} />
                         <Route path="customers" element={<CustomerPage />} />
                         <Route path="categories" element={<CategoriesPage />} />
-                        <Route path="inbound" element={<InboundPage />} />
+                        <Route path="inbound">
+                            {/* /admin/inbound/orders */}
+                            <Route path="orders" element={<InboundPage />} />
+                            {/* /admin/inbound/products */}
+                            <Route path="products" element={<InboundProductsPage />} />
+                        </Route>
                         <Route path="outbound" element={<OutboundPage />} />
                         <Route path="processing" element={<ProcessingPage />} />
                         <Route path="reports" element={<ReportsPage />} />
@@ -101,7 +107,7 @@ function App() {
     return (
         <>
             {/* ĐẶT Ở ĐÂY: Nó sẽ nằm ngoài hệ thống Routes và luôn hiển thị nếu người dùng đã đăng nhập */}
-             {isAuthenticated && userRole === 'admin' && (
+            {isAuthenticated && userRole === 'admin' && (
                 <AIAssistantWidget />
             )}
 
@@ -117,9 +123,9 @@ function App() {
                     path="/"
                     element={
                         !isAuthenticated ? <Navigate to="/login" replace /> :
-                        userRole === 'supplier' ? <Navigate to="/supplier/dashboard" replace /> :
-                        userRole === 'customer' ? <Navigate to="/customer/dashboard" replace /> :
-                        <Navigate to="/admin/home" replace />
+                            userRole === 'supplier' ? <Navigate to="/supplier/dashboard" replace /> :
+                                userRole === 'customer' ? <Navigate to="/customer/dashboard" replace /> :
+                                    <Navigate to="/admin/home" replace />
                     }
                 />
 

@@ -8,8 +8,8 @@ const ReportingPage = () => {
   const [activeTab, setActiveTab] = useState('NĂM');
   const [loading, setLoading] = useState(true);
   const [reportData, setReportData] = useState({
-    kpis: { revenue: "$0", inventory: "0", opCost: "$0", compRate: "0%" },
-    chart: [40, 52, 64, 76, 88, 150, 112, 124]
+    kpis: { revenue: "$0", inventory: "0 kg", opCost: "$0", compRate: "0%" },
+    chart: [40, 52, 64, 76, 88, 150, 112, 124] // Mảng dữ liệu mặc định ban đầu
   });
 
   // Hàm tải dữ liệu thật từ Server
@@ -18,14 +18,21 @@ const ReportingPage = () => {
     try {
       const rangeMap = { 'NGÀY': 'day', 'THÁNG': 'month', 'NĂM': 'year' };
       const res = await axios.get(`http://localhost:5000/api/reports/dynamic?range=${rangeMap[tabName]}`);
-      if (res.data.success) {
+      
+      if (res.data && res.data.success) {
         setReportData({
-          kpis: res.data.kpis,
-          chart: res.data.chartData
+          kpis: {
+            revenue: res.data.kpis?.revenue || "$0",
+            inventory: res.data.kpis?.inventory || "0 kg",
+            opCost: res.data.kpis?.opCost || "$0",
+            compRate: res.data.kpis?.compRate || "0%"
+          },
+          // Kiểm tra an toàn: Nếu server có trả về chartData thì lấy, nếu không thì giữ lại mảng cũ hoặc mảng mặc định tránh bị undefined
+          chart: Array.isArray(res.data.chartData) ? res.data.chartData : [40, 52, 64, 76, 88, 150, 112, 124]
         });
       }
     } catch (err) {
-      console.error("Không thể kết nối API báo cáo");
+      console.error("❌ Không thể kết nối API báo cáo:", err.message);
     } finally {
       setLoading(false);
     }
@@ -36,18 +43,27 @@ const ReportingPage = () => {
     fetchReport(activeTab);
   }, [activeTab]);
 
-  // Lắng nghe Real-time
+  // Lắng nghe Real-time từ Socket Server
   useEffect(() => {
     if (socket) {
       socket.on('report_update', (update) => {
         setReportData(prev => ({
           ...prev,
-          kpis: { ...prev.kpis, ...update }
+          kpis: { 
+            ...prev.kpis, 
+            // Cập nhật linh hoạt các trường gửi lên từ Socket phát sóng ngầm (như inventory, inboundBatches)
+            revenue: update.revenue || prev.kpis.revenue,
+            inventory: update.inventory || prev.kpis.inventory,
+            compRate: update.compRate || prev.kpis.compRate
+          }
         }));
       });
     }
     return () => socket?.off('report_update');
   }, [socket]);
+
+  // Đảm bảo biến chart luôn là một mảng trước khi render nhằm chống lỗi sập map tuyệt đối
+  const safeChartData = Array.isArray(reportData?.chart) ? reportData.chart : [];
 
   return (
     <div style={{ padding: '40px', backgroundColor: '#FDFCF0', minHeight: '100%' }}>
@@ -76,10 +92,10 @@ const ReportingPage = () => {
 
       {/* --- KPI SUMMARY CARDS --- */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '32px' }}>
-        <KpiCard title="TỔNG DOANH THU" value={reportData.kpis.revenue} trend="+12.5%" trendType="up" />
-        <KpiCard title="SẢN LƯỢNG TỒN KHO" value={reportData.kpis.inventory} subText="Tấn (Tổng kho)" isWarning />
-        <KpiCard title="CHI PHÍ VẬN HÀNH" value={reportData.kpis.opCost} trend="-4.2%" trendType="down" />
-        <KpiCard title="TỶ LỆ HOÀN TẤT" value={reportData.kpis.compRate} subText="Tiêu chuẩn vàng" isSuccess />
+        <KpiCard title="TỔNG DOANH THU" value={reportData.kpis?.revenue || "$0"} trend="+12.5%" trendType="up" />
+        <KpiCard title="SẢN LƯỢNG TỒN KHO" value={reportData.kpis?.inventory || "0 kg"} subText="Tổng dung lượng thực tế" isWarning />
+        <KpiCard title="CHI PHÍ VẬN HÀNH" value={reportData.kpis?.opCost || "$0"} trend="-4.2%" trendType="down" />
+        <KpiCard title="TỶ LỆ HOÀN TẤT" value={reportData.kpis?.compRate || "0%"} subText="Tiêu chuẩn vàng" isSuccess />
       </div>
 
       {/* --- CHARTS SECTION --- */}
@@ -90,18 +106,21 @@ const ReportingPage = () => {
             <FaEllipsisH color="#A89B8D" style={{ cursor: 'pointer' }} />
           </div>
           <div style={{ height: '200px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', padding: '0 10px' }}>
-            {reportData.chart.map((h, i) => (
+            {safeChartData.map((h, i) => (
               <div key={i} style={{ textAlign: 'center' }}>
                 <div style={{ 
                   width: '30px', 
-                  height: `${h}px`, 
-                  backgroundColor: i === reportData.chart.length - 1 ? '#3D2B1F' : '#EFE3D5',
+                  height: `${Math.min(h, 200)}px`, // Giới hạn chiều cao hiển thị cột tối đa 200px tránh tràn khung
+                  backgroundColor: i === safeChartData.length - 1 ? '#3D2B1F' : '#EFE3D5',
                   borderRadius: '4px',
                   transition: 'height 0.6s ease'
                 }}></div>
                 <p style={{ fontSize: '9px', fontWeight: 'bold', marginTop: '8px' }}>P{i+1}</p>
               </div>
             ))}
+            {safeChartData.length === 0 && (
+              <p style={{ fontSize: '12px', color: '#A89B8D', textAlign: 'center', width: '100%', pb: '40px' }}>Không có dữ liệu biểu đồ.</p>
+            )}
           </div>
         </div>
 
@@ -135,20 +154,22 @@ const ReportingPage = () => {
   );
 };
 
-// --- GIỮ NGUYÊN CÁC SUB-COMPONENTS ---
+// --- CÁC SUB-COMPONENTS HỖ TRỢ AN TOÀN ---
 const KpiCard = ({ title, value, trend, trendType, subText, isWarning, isSuccess }) => (
   <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '20px', boxShadow: '0 4px 15px rgba(0,0,0,0.02)' }}>
     <p style={{ fontSize: '9px', fontWeight: 'bold', color: '#A89B8D', marginBottom: '12px' }}>{title}</p>
-    <div style={{ fontSize: '28px', fontWeight: '900', color: '#3D2B1F', marginBottom: '8px' }}>{value}</div>
+    <div style={{ fontSize: '24px', fontWeight: '900', color: '#3D2B1F', marginBottom: '8px', wordBreak: 'break-all' }}>{value}</div>
     {trend && <span style={{ fontSize: '10px', fontWeight: 'bold', padding: '4px 8px', borderRadius: '12px', backgroundColor: trendType === 'up' ? '#E8F5E9' : '#FFEBEE', color: trendType === 'up' ? '#4A6741' : '#C62828' }}>{trend}</span>}
   </div>
 );
+
 const ProgressItem = ({ label, percent, color }) => (
   <div style={{ marginBottom: '16px' }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 'bold', marginBottom: '6px' }}><span>{label}</span><span>{percent}%</span></div>
     <div style={{ height: '8px', backgroundColor: '#F0F0F0', borderRadius: '4px', overflow: 'hidden' }}><div style={{ width: `${percent}%`, height: '100%', backgroundColor: color }}></div></div>
   </div>
 );
+
 const OriginRow = ({ sku, origin, weight, value, status, statusBg, statusColor }) => (
   <tr style={{ borderBottom: '1px solid rgba(61, 43, 31, 0.05)' }}>
     <td style={tdStyle}><b>{sku}</b><br/><small>{origin}</small></td>

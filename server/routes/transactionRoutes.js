@@ -7,6 +7,17 @@ const { protect } = require('../middleware/authMiddleware');
 const Transaction = require('../models/Transaction'); 
 const Product = require('../models/Product'); 
 
+// Import Controller xử lý số liệu Dashboard vừa đổi tên
+const supplierPageCtrl = require('../controllers/supplierpageController');
+
+// --- ROUTE THỐNG KÊ CHO SUPPLIER DASHBOARD ---
+/**
+ * @route   GET /api/transactions/supplier/dashboard-stats
+ * @desc    Lấy số liệu thật (Tồn kho NCC, Đơn đang đi, Đơn hoàn tất tháng)
+ */
+router.get('/supplier/dashboard-stats', protect, supplierPageCtrl.getSupplierStats);
+
+
 // --- CÁC ROUTE GIAO DỊCH ---
 
 /**
@@ -24,7 +35,6 @@ router.post('/import', protect, async (req, res) => {
             });
         }
 
-        // Tạo mã định danh duy nhất (Có thể dùng mã bạn muốn hoặc timestamp)
         const uniqueId = `REQ-IM-${Date.now()}`;
 
         const newTransaction = new Transaction({
@@ -74,11 +84,10 @@ router.get('/pending', protect, async (req, res) => {
 
 /**
  * @route   GET /api/transactions/:requestId
- * @desc    Tìm một giao dịch cụ thể theo mã requestId (Sửa lỗi 404)
+ * @desc    Tìm một giao dịch cụ thể theo mã requestId
  */
 router.get('/:requestId', protect, async (req, res) => {
     try {
-        // Tìm theo requestId thay vì _id của MongoDB
         const transaction = await Transaction.findOne({ requestId: req.params.requestId })
             .populate('product', 'name sku image category')
             .populate('supplier', 'name email address phone');
@@ -99,13 +108,12 @@ router.get('/:requestId', protect, async (req, res) => {
 
 /**
  * @route   PATCH /api/transactions/:id/approve
- * @desc    Phê duyệt đơn -> Cập nhật kho hàng
+ * @desc    Phê duyệt đơn -> Cập nhật tăng kho hệ thống ĐỒNG THỜI trừ kho nhà cung cấp
  */
 router.patch('/:id/approve', protect, async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Kiểm tra xem là ObjectId hay requestId
         let transaction;
         if (mongoose.Types.ObjectId.isValid(id)) {
             transaction = await Transaction.findById(id);
@@ -121,18 +129,36 @@ router.patch('/:id/approve', protect, async (req, res) => {
             return res.status(400).json({ success: false, message: "Đơn hàng này đã được duyệt rồi" });
         }
 
-        // Cập nhật trạng thái
+        // 1. Kiểm tra lượng hàng sẵn có của Nhà cung cấp trước khi trừ kho
+        const productData = await Product.findById(transaction.product);
+        if (!productData) {
+            return res.status(404).json({ success: false, message: "Sản phẩm không tồn tại trong hệ thống" });
+        }
+        
+        if ((productData.availableWeight || 0) < transaction.quantity) {
+            return res.status(400).json({ 
+                success: false, 
+                message: `Kho NCC không đủ hàng! Hiện có: ${productData.availableWeight} kg, yêu cầu: ${transaction.quantity} kg.` 
+            });
+        }
+
+        // 2. Chuyển trạng thái đơn hàng sang APPROVED
         transaction.status = 'APPROVED';
         await transaction.save();
 
-        // Cập nhật tồn kho thực tế của Sản phẩm
+        // 3. ĐỒNG BỘ KHO 2 BÊN:
+        // - Vừa tăng tồn kho 'stock' của Hệ thống nhận (Kho tổng RoastLogic)
+        // - Vừa trừ khối lượng sẵn có 'availableWeight' của Nhà cung cấp
         await Product.findByIdAndUpdate(transaction.product, {
-            $inc: { stock: transaction.quantity }
+            $inc: { 
+                stock: transaction.quantity,                  // Cộng kho nhận
+                availableWeight: -transaction.quantity       // Trừ khối lượng sẵn có tại mục nhà cung cấp
+            }
         });
 
         res.json({ 
             success: true, 
-            message: "Phê duyệt thành công! Tồn kho đã được cập nhật.",
+            message: "Phê duyệt và kích hoạt vận chuyển thành công! Số liệu kho 2 bên đã tự động đồng bộ.",
             data: transaction 
         });
     } catch (error) {

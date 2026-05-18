@@ -13,6 +13,7 @@ const DashboardLayout = ({ children }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const [isInboundOpen, setIsInboundOpen] = useState(false);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -74,13 +75,30 @@ const DashboardLayout = ({ children }) => {
           />
 
           {/* --- CHỨC NĂNG MỚI THÊM VÀO --- */}
-          <MenuItem
-            icon={<FaArrowAltCircleDown style={{ color: '#27ae60' }} />}
-            label="Nhập kho"
-            active={location.pathname.includes('/admin/inbound')}
-            collapsed={isCollapsed}
-            onClick={() => navigate('/admin/inbound')}
-          />
+          <div>
+            <MenuItem
+              icon={<FaArrowAltCircleDown style={{ color: '#27ae60' }} />}
+              label="Quản lý nhập kho"
+              collapsed={isCollapsed}
+              onClick={() => setIsInboundOpen(!isInboundOpen)} // Nhấn vào để đóng/mở
+            />
+
+            {/* Hiển thị menu con nếu isInboundOpen = true và Sidebar không bị thu nhỏ */}
+            {isInboundOpen && !isCollapsed && (
+              <div style={{ backgroundColor: '#f9f9f9', paddingLeft: '15px' }}>
+                <MenuItem
+                  label="1. Phiếu nhập kho"
+                  onClick={() => navigate('/admin/inbound/orders')}
+                  active={location.pathname === '/admin/inbound/orders'}
+                />
+                <MenuItem
+                  label="2. Sản phẩm nhập kho"
+                  onClick={() => navigate('/admin/inbound/products')}
+                  active={location.pathname === '/admin/inbound/products'}
+                />
+              </div>
+            )}
+          </div>
 
           <MenuItem
             icon={<FaArrowAltCircleUp style={{ color: '#e67e22' }} />}
@@ -110,7 +128,7 @@ const DashboardLayout = ({ children }) => {
           <div>
             <MenuItem
               icon={<FaUsers />}
-              label="Quản lý tài khoản"
+              label="Quản lý nhà cung ứng"
               active={isAccountPath && !isAccountMenuOpen}
               collapsed={isCollapsed}
               onClick={() => setIsAccountMenuOpen(!isAccountMenuOpen)}
