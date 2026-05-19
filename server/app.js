@@ -11,6 +11,7 @@ const supplierRoutes = require('./routes/supplierRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const customerRoutes = require('./routes/customerRoutes');
+const outboundRoutes = require('./routes/outboundRoutes');
 
 // 🛠️ CẶP NHẬT: IMPORT ROUTE CỦA PHÂN HỆ NHÂN SỰ
 const staffRoutes = require('./routes/staffRoutes');
@@ -31,6 +32,7 @@ app.use('/api/suppliers', supplierRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/customers', customerRoutes);
+app.use('/api/outbounds', outboundRoutes);
 
 // 🛠️ CẬP NHẬT: KÍCH HOẠT ENDPOINT CHÍNH THỨC CHO QUÂN LÝ NHÂN SỰ
 app.use('/api/staff', staffRoutes);
