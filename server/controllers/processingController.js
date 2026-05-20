@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Category = require('../models/Category');
 const Product = require('../models/Product');
 const ProcessingHistory = require('../models/ProcessingHistory'); // Model lịch sử của bạn
@@ -7,7 +8,14 @@ exports.executeProcessing = async (req, res) => {
         const { source, target, weight, expectedLoss, temperature, processingTime, gasPressure } = req.body;
 
         // 1. Kiểm tra và trừ số lượng hạt thô trong Kho Danh Mục (Categories)
-        const categoryDoc = await Category.findOne({ name: { $regex: new RegExp(`^${source.trim()}$`, 'i') } });
+        let categoryDoc = null;
+        const sourceValue = source?.toString().trim();
+        if (sourceValue && mongoose.Types.ObjectId.isValid(sourceValue)) {
+            categoryDoc = await Category.findById(sourceValue);
+        }
+        if (!categoryDoc) {
+            categoryDoc = await Category.findOne({ name: { $regex: new RegExp(`^${sourceValue}$`, 'i') } });
+        }
         if (!categoryDoc) {
             return res.status(404).json({ success: false, message: `Không tìm thấy loại hạt thô: ${source}` });
         }
@@ -23,14 +31,36 @@ exports.executeProcessing = async (req, res) => {
         } else if (categoryDoc.stock !== undefined) {
             categoryDoc.stock -= inputWeight;
         }
-        await categoryDoc.save();
+
+        try {
+            await categoryDoc.save();
+        } catch (saveError) {
+            if (saveError.name === 'ValidationError' && saveError.errors?.supplier) {
+                const updateFields = {};
+                if (categoryDoc.quantity !== undefined) updateFields.quantity = categoryDoc.quantity;
+                if (categoryDoc.stock !== undefined) updateFields.stock = categoryDoc.stock;
+
+                if (Object.keys(updateFields).length > 0) {
+                    await Category.findByIdAndUpdate(categoryDoc._id, { $set: updateFields }, { runValidators: false });
+                }
+            } else {
+                throw saveError;
+            }
+        }
 
         // 2. Tính toán khối lượng thành phẩm thực tế sau hao hụt
         const lossPercent = parseFloat(expectedLoss) || 0;
         const outputWeight = parseFloat((inputWeight * (1 - lossPercent / 100)).toFixed(1));
 
         // 3. Tìm sản phẩm đích trong collection products và cộng kho thành phẩm
-        const productDoc = await Product.findOne({ name: { $regex: new RegExp(`^${target.trim()}$`, 'i') } });
+        let productDoc = null;
+        const targetValue = target?.toString().trim();
+        if (targetValue && mongoose.Types.ObjectId.isValid(targetValue)) {
+            productDoc = await Product.findById(targetValue);
+        }
+        if (!productDoc) {
+productDoc = await Product.findOne({ name: { $regex: new RegExp(`^${targetValue}$`, 'i') } });
+        }
         if (!productDoc) {
             return res.status(404).json({ success: false, message: `Không tìm thấy sản phẩm đích: ${target}` });
         }
@@ -60,7 +90,7 @@ exports.executeProcessing = async (req, res) => {
             tag: 'ĐÃ ĐỒNG BỘ KHO',
             tagColor: '#4F7942',
             temperature,
-processingTime,
+            processingTime,
             gasPressure,
             createdAt: new Date()
         });

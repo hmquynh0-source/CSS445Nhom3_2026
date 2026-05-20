@@ -65,6 +65,11 @@ const transactionSchema = new mongoose.Schema({
         required: true,
         unique: true
     },
+    rejectionReason: {
+        type: String,
+        trim: true,
+        default: ''
+    },
     notes: {
         type: String,
         default: "Yêu cầu nhập kho nhân xanh"

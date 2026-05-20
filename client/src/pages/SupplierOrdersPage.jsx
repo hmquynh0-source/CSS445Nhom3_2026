@@ -62,13 +62,34 @@ const SupplierOrdersPage = () => {
     if (!window.confirm("Xác nhận lô hàng đã khởi hành? Thao tác này sẽ cập nhật kho của khách hàng.")) return;
     
     try {
-      const res = await axios.patch(`http://localhost:5000/api/transactions/${order._id}/approve`, {}, config);
+      const res = await axios.post(`http://localhost:5000/api/transactions/${order._id}/approve`, {}, config);
       if (res.data.success) {
         alert("✅ Xác nhận khởi hành thành công!");
         setOrder({ ...order, status: 'APPROVED' });
       }
     } catch (err) {
       alert("Lỗi: " + (err.response?.data?.message || "Không thể xác nhận"));
+    }
+  };
+
+  const handleReject = async () => {
+    const reason = window.prompt("Vui lòng nhập lý do từ chối đơn hàng này:");
+    if (reason === null) return;
+    if (!reason.trim()) {
+      alert("Lý do từ chối không được để trống.");
+      return;
+    }
+
+    if (!window.confirm("Bạn có chắc chắn muốn từ chối đơn hàng này?")) return;
+
+    try {
+const res = await axios.post(`http://localhost:5000/api/transactions/${order._id}/reject`, { reason }, config);
+      if (res.data.success) {
+        alert("❌ Đã từ chối đơn hàng.");
+        setOrder({ ...order, status: 'REJECTED', rejectionReason: reason });
+      }
+    } catch (err) {
+      alert("Lỗi: " + (err.response?.data?.message || "Không thể từ chối"));
     }
   };
 
@@ -117,10 +138,15 @@ const SupplierOrdersPage = () => {
           <button onClick={() => window.print()} className="flex items-center gap-3 bg-white border border-[#EAE1D6] text-[#3D2B1F] px-8 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-[#F9F6F2] transition-all shadow-sm">
             <Printer size={18} /> In chứng từ
           </button>
-          {order.status === 'PENDING' && (
-            <button onClick={handleApprove} className="flex items-center gap-3 bg-[#3D2B1F] text-white px-8 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-black shadow-xl shadow-[#3D2B1F]/30 transition-all active:scale-95">
+{order.status === 'PENDING' && (
+            <>
+              <button onClick={handleReject} className="flex items-center gap-3 bg-red-600 text-white px-8 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-red-700 shadow-xl shadow-red-600/25 transition-all active:scale-95">
+                <AlertCircle size={18} /> Từ chối đơn
+              </button>
+              <button onClick={handleApprove} className="flex items-center gap-3 bg-[#3D2B1F] text-white px-8 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-black shadow-xl shadow-[#3D2B1F]/30 transition-all active:scale-95">
                 <Truck size={18} /> Xác nhận khởi hành
-            </button>
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -165,7 +191,7 @@ const SupplierOrdersPage = () => {
                     name={order.product?.name || "Sản phẩm không tên"}
                     detail={`Mã SKU: ${order.product?.sku || 'N/A'}`}
                     weight={`${order.quantity?.toLocaleString()} KG`}
-                    price={`${order.price?.toLocaleString()} đ`}
+price={`${order.price?.toLocaleString()} đ`}
                     total={`${order.totalPrice?.toLocaleString()} đ`}
                   />
               </tbody>
@@ -219,7 +245,7 @@ const SupplierOrdersPage = () => {
 
 // --- SUB-COMPONENTS ---
 const AddressCard = ({ type, name, address, person, role, icon }) => (
-  <div className="bg-white p-8 rounded-[2.5rem] border border-[#EAE1D6] relative group hover:border-[#3D2B1F] transition-all duration-500 shadow-sm hover:shadow-md">
+<div className="bg-white p-8 rounded-[2.5rem] border border-[#EAE1D6] relative group hover:border-[#3D2B1F] transition-all duration-500 shadow-sm hover:shadow-md">
     <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-100 transition-opacity duration-500">{icon}</div>
     <p className="text-[10px] font-black text-[#A89485] uppercase tracking-[0.2em] mb-6">{type}</p>
     <h4 className="text-lg font-bold text-[#3D2B1F] mb-2">{name}</h4>
@@ -273,7 +299,7 @@ const SignatureArea = ({ label, desc, status }) => (
           </div>
       ) : (
           <>
-            <FileText size={28} className="text-[#EAE1D6] group-hover:text-[#3D2B1F] transition-colors" />
+<FileText size={28} className="text-[#EAE1D6] group-hover:text-[#3D2B1F] transition-colors" />
             <p className="text-[9px] text-[#A89485] italic font-medium px-4">{desc}</p>
           </>
       )}
