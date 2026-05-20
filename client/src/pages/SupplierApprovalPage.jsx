@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Check, X, MapPin, Package, Info, ChevronRight, Loader2 } from 'lucide-react';
+import { Check, X, MapPin, Package, Info, ChevronRight, Loader2, AlertTriangle } from 'lucide-react';
 import axios from 'axios';
 
 const SupplierApprovalPage = () => {
     const [requests, setRequests] = useState([]);
     const [selectedReq, setSelectedReq] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
     // Cấu hình Header chứa Token để vượt qua Middleware protect
     const config = {
@@ -15,13 +16,20 @@ const SupplierApprovalPage = () => {
     // --- LẤY DỮ LIỆU TỪ BACKEND ---
     const fetchRequests = async () => {
         try {
-            // Lấy các đơn hàng đang PENDING
+            setLoading(true);
             const response = await axios.get('http://localhost:5000/api/transactions/pending', config);
-            // Dữ liệu trả về từ backend thường nằm trực tiếp trong response.data
-            setRequests(Array.isArray(response.data) ? response.data : response.data.data || []);
-            setLoading(false);
+            
+            // Backend trả về dạng { success: true, data: [...] }
+            if (response.data && response.data.data) {
+                setRequests(response.data.data);
+            } else {
+                setRequests(Array.isArray(response.data) ? response.data : []);
+            }
+            setError(null);
         } catch (error) {
-            console.error("Lỗi lấy dữ liệu:", error);
+            console.error("Lỗi lấy dữ liệu giao dịch pending:", error);
+            setError(error.response?.data?.message || "Không thể kết nối lấy dữ liệu thẩm định đơn hàng.");
+        } finally {
             setLoading(false);
         }
     };
@@ -30,23 +38,48 @@ const SupplierApprovalPage = () => {
         fetchRequests();
     }, []);
 
-    // --- XỬ LÝ PHÊ DUYỆT ---
-    const handleApprove = async (id) => {
-        if (!window.confirm("Bạn có chắc chắn muốn phê duyệt lô hàng này vào kho không?")) return;
+    // --- XỬ LÝ PHÊ DUYỆT (Đã đồng bộ hóa với cơ chế bắt lỗi dữ liệu từ Backend) ---
+    // --- XỬ LÝ PHÊ DUYỆT CHUẨN HÓA (ĐÃ TÁCH BIỆT LUỒNG LỖI) ---
+   const handleApprove = async (id) => {
+    if (!window.confirm("Bạn có chắc chắn muốn phê duyệt lô hàng này không?")) return;
+
+    try {
+        // 🌟 ĐẢM BẢO dùng axios.post (không phải axios.put) và đúng đường dẫn
+        const res = await axios.post(`http://localhost:5000/api/transactions/${id}/approve`, {}, config);
+        
+        if (res.data.success) {
+            alert(`✅ Thành công: ${res.data.message}`);
+            // Cập nhật lại state danh sách đơn hàng trên giao diện thành trạng thái mới
+            setRequests(requests.map(r => r._id === id ? { ...r, status: 'SUPPLIER_CONFIRMED' } : r));
+        }
+    } catch (error) {
+        console.error("Lỗi xử lý phê duyệt:", error);
+        alert(`❌ Thất bại: ${error.response?.data?.message || "Không tìm thấy endpoint API (Lỗi 404)"}`);
+    }
+};
+
+    // --- XỬ LÝ TỪ CHỐI (Dự phòng trường hợp từ chối đơn hàng) ---
+    const handleReject = async (id) => {
+        const reason = window.prompt("Vui lòng nhập lý do từ chối tiếp nhận lô hàng này:");
+        if (reason === null) return; 
+        
+        if (!reason.trim()) {
+            alert("Bạn bắt buộc phải nhập lý do từ chối!");
+            return;
+        }
 
         try {
-            // Gọi đến route PATCH /api/transactions/:id/approve
-            const res = await axios.patch(`http://localhost:5000/api/transactions/${id}/approve`, {}, config);
+            // Lưu ý: Hiện tại backend của bạn chưa viết route /reject công khai, đoạn này chạy trực tiếp theo chuẩn chung
+            const res = await axios.post(`http://localhost:5000/api/transactions/${id}/reject`, { reason }, config);
             
             if (res.data.success) {
-                alert("✅ Phê duyệt thành công! Hàng đã được cộng vào tồn kho hệ thống.");
-                // Cập nhật trạng thái tại chỗ để tránh load lại trang
-                setRequests(requests.map(r => r._id === id ? { ...r, status: 'APPROVED' } : r));
+                alert("❌ Đã từ chối tiếp nhận yêu cầu nhập kho này.");
+                setRequests(requests.map(r => r._id === id ? { ...r, status: 'REJECTED' } : r));
                 setSelectedReq(null);
             }
         } catch (error) {
-            console.error("Lỗi phê duyệt:", error);
-            alert("❌ Lỗi khi phê duyệt: " + (error.response?.data?.message || "Server error"));
+            console.error("Lỗi khi thực hiện từ chối đơn hàng:", error);
+            alert("❌ Không thể thực hiện: " + (error.response?.data?.message || "Yêu cầu từ chối chưa được thiết lập ở Backend"));
         }
     };
 
@@ -59,6 +92,13 @@ const SupplierApprovalPage = () => {
 
     return (
         <div className="max-w-[1400px] mx-auto p-8 animate-in fade-in duration-700">
+            {error && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm flex items-center gap-2 font-medium">
+                    <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                    <span>{error}</span>
+                </div>
+            )}
+
             {/* Header */}
             <div className="flex justify-between items-end mb-12 border-b border-[#EAE1D6] pb-8">
                 <div className="max-w-xl">
@@ -82,7 +122,7 @@ const SupplierApprovalPage = () => {
                     </div>
                     
                     {requests.length === 0 ? (
-                        <p className="text-center py-20 text-[#A89485] italic">Hiện không có yêu cầu nào cần xử lý.</p>
+                        <p className="text-center py-20 text-[#A89485] italic">Hiện không có yêu cầu nào cần xử lý hoặc phê duyệt.</p>
                     ) : requests.map((req) => (
                         <div 
                             key={req._id}
@@ -129,7 +169,7 @@ const SupplierApprovalPage = () => {
                                 <ProductDetail 
                                     name={selectedReq.product?.name || "Hạt nhân xanh"} 
                                     qty={`${selectedReq.quantity} kg`} 
-                                    price={`${(selectedReq.totalPrice / selectedReq.quantity).toLocaleString()} / kg`} 
+                                    price={`${selectedReq.quantity > 0 ? (selectedReq.totalPrice / selectedReq.quantity).toLocaleString() : 0} / kg`} 
                                 />
                             </div>
 
@@ -148,7 +188,10 @@ const SupplierApprovalPage = () => {
                             <div className="flex gap-4">
                                 {selectedReq.status === 'PENDING' && (
                                     <>
-                                        <button className="flex-1 py-4 bg-white border border-[#EAE1D6] rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-600 transition-all">
+                                        <button 
+                                            onClick={() => handleReject(selectedReq._id)}
+                                            className="flex-1 py-4 bg-white border border-[#EAE1D6] rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-600 transition-all"
+                                        >
                                             Từ chối
                                         </button>
                                         <button 
@@ -164,6 +207,11 @@ const SupplierApprovalPage = () => {
                                         Đơn hàng đã hoàn tất nhập kho
                                     </div>
                                 )}
+                                {selectedReq.status === 'REJECTED' && (
+                                    <div className="w-full py-4 bg-red-50 text-red-700 rounded-xl text-[10px] font-black uppercase text-center border border-red-200">
+                                        Đơn hàng đã bị từ chối tiếp nhận
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ) : (
@@ -177,7 +225,6 @@ const SupplierApprovalPage = () => {
     );
 };
 
-// Component con hiển thị chỉ số
 const StatBox = ({ label, value, sub }) => (
     <div className="bg-[#F9F6F2] px-6 py-4 rounded-lg min-w-[140px]">
         <p className="text-[9px] font-black text-[#A89485] uppercase tracking-widest mb-1">{label}</p>
@@ -188,7 +235,6 @@ const StatBox = ({ label, value, sub }) => (
     </div>
 );
 
-// Component con hiển thị chi tiết sản phẩm
 const ProductDetail = ({ name, qty, price }) => (
     <div className="flex justify-between items-center group">
         <div>

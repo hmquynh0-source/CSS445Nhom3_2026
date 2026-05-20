@@ -7,37 +7,42 @@ exports.executeProcessing = async (req, res) => {
         const { source, target, weight, expectedLoss, temperature, processingTime, gasPressure } = req.body;
 
         // 1. Kiểm tra và trừ số lượng hạt thô trong Kho Danh Mục (Categories)
-        const categoryDoc = await Category.findOne({ name: source });
+        const categoryDoc = await Category.findOne({ name: { $regex: new RegExp(`^${source.trim()}$`, 'i') } });
         if (!categoryDoc) {
             return res.status(404).json({ success: false, message: `Không tìm thấy loại hạt thô: ${source}` });
         }
         
-        // Giả sử trường lưu số lượng trong categories của bạn tên là stock hoặc quantity (bạn đổi lại cho đúng tên trường trong DB)
         const inputWeight = parseFloat(weight);
-        if (categoryDoc.stock && categoryDoc.stock < inputWeight) {
-            return res.status(400).json({ success: false, message: `Số lượng hạt thô trong kho không đủ! (Hiện còn: ${categoryDoc.stock} kg)` });
+        const availableQty = categoryDoc.quantity || categoryDoc.stock || 0;
+        if (availableQty < inputWeight) {
+            return res.status(400).json({ success: false, message: `Số lượng hạt thô trong kho không đủ! (Hiện còn: ${availableQty} kg)` });
         }
         
-        if (categoryDoc.stock) {
-            categoryDoc.stock -= inputWeight; // Trừ kho nguyên liệu thô
-            await categoryDoc.save();
+        if (categoryDoc.quantity !== undefined) {
+            categoryDoc.quantity -= inputWeight; // Trừ kho nguyên liệu thô
+        } else if (categoryDoc.stock !== undefined) {
+            categoryDoc.stock -= inputWeight;
         }
+        await categoryDoc.save();
 
         // 2. Tính toán khối lượng thành phẩm thực tế sau hao hụt
         const lossPercent = parseFloat(expectedLoss) || 0;
-        const outputWeight = (inputWeight * (1 - lossPercent / 100)).toFixed(1);
+        const outputWeight = parseFloat((inputWeight * (1 - lossPercent / 100)).toFixed(1));
 
         // 3. Tìm sản phẩm đích trong collection products và cộng kho thành phẩm
-        const productDoc = await Product.findOne({ name: target });
+        const productDoc = await Product.findOne({ name: { $regex: new RegExp(`^${target.trim()}$`, 'i') } });
         if (!productDoc) {
             return res.status(404).json({ success: false, message: `Không tìm thấy sản phẩm đích: ${target}` });
         }
 
-        // Cộng dồn vào kho thành phẩm (Đổi trường 'stock' thành tên trường số lượng thực tế trong DB của bạn)
+        if (productDoc.stockQuantity !== undefined) {
+            productDoc.stockQuantity += outputWeight;
+        }
         if (productDoc.stock !== undefined) {
-            productDoc.stock += parseFloat(outputWeight);
-        } else {
-            productDoc.stock = parseFloat(outputWeight);
+            productDoc.stock += outputWeight;
+        }
+        if (productDoc.stockQuantity === undefined && productDoc.stock === undefined) {
+            productDoc.stockQuantity = outputWeight;
         }
         await productDoc.save();
 
@@ -55,7 +60,7 @@ exports.executeProcessing = async (req, res) => {
             tag: 'ĐÃ ĐỒNG BỘ KHO',
             tagColor: '#4F7942',
             temperature,
-            processingTime,
+processingTime,
             gasPressure,
             createdAt: new Date()
         });

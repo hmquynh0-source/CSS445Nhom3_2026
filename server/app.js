@@ -12,8 +12,8 @@ const categoryRoutes = require('./routes/categoryRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const customerRoutes = require('./routes/customerRoutes');
 const outboundRoutes = require('./routes/outboundRoutes');
-
-// 🛠️ CẶP NHẬT: IMPORT ROUTE CỦA PHÂN HỆ NHÂN SỰ
+const supplierStockRoutes = require('./routes/supplierStockRoutes');
+const processingRoutes = require('./routes/processingRoutes');
 const staffRoutes = require('./routes/staffRoutes');
 
 const app = express();
@@ -27,15 +27,27 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes); 
 app.use('/api/auth', authRoutes);
+
+// Đồng bộ định tuyến: Cả phân hệ giao dịch gốc và phân hệ /inbound của Admin đều chung một file xử lý
 app.use('/api/transactions', transactionRoutes);
+app.use('/api/inbound', transactionRoutes); 
+
+app.use('/api/supplier-stocks', supplierStockRoutes);
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/processing', processingRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/outbounds', outboundRoutes);
-
-// 🛠️ CẬP NHẬT: KÍCH HOẠT ENDPOINT CHÍNH THỨC CHO QUÂN LÝ NHÂN SỰ
 app.use('/api/staff', staffRoutes);
 
-// Export app để server.js sử dụng
+// --- 4. CẤU HÌNH BẮT LỖI LẠC ĐƯỜNG DỰ PHÒNG ---
+// app.use((req, res, next) => {
+//     console.log(`⚠️ Tuyến API chưa khai báo: ${req.method} ${req.originalUrl}`);
+//     res.status(404).json({
+//         success: false,
+//         message: `Không tìm thấy endpoint: ${req.method} ${req.originalUrl}`
+//     });
+// });
+
 module.exports = app;

@@ -16,6 +16,16 @@ const transactionSchema = new mongoose.Schema({
         ref: 'Supplier',
         required: [true, 'Nhà cung cấp là bắt buộc']
     },
+    productName: {
+        type: String,
+        trim: true,
+        default: ''
+    },
+    supplierName: {
+        type: String,
+        trim: true,
+        default: ''
+    },
     warehouse: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Warehouse',
@@ -32,6 +42,18 @@ const transactionSchema = new mongoose.Schema({
     totalPrice: {
         type: Number,
         required: true
+    },
+    moisture: {
+        type: Number,
+        default: 0
+    },
+    screen: {
+        type: String,
+        default: ''
+    },
+    defectRate: {
+        type: Number,
+        default: 0
     },
     status: {
         type: String,

@@ -82,11 +82,11 @@ const SupplierLayout = () => {
 
                     {/* BOTTOM MENU */}
                     <div className="mt-auto pt-6 border-t border-[#EAE1D6] space-y-2">
-                        {!isCollapsed && (
+                        {/* {!isCollapsed && (
                             <button className="w-full bg-[#3D2B1F] hover:bg-[#1A110B] text-white py-3.5 rounded-xl flex items-center justify-center gap-2 font-bold text-[10px] uppercase tracking-widest mb-4 transition-all active:scale-95">
                                 <Plus size={16} /> Tạo lô hàng mới
                             </button>
-                        )}
+                        )} */}
                         <SupplierNavItem
                             icon={<UserCircle size={18} />}
                             label="Hồ sơ cá nhân"

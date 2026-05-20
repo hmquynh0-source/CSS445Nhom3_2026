@@ -6,7 +6,7 @@ import { RBACProvider } from './context/RBACContext';
 
 // Pages & Components
 import LoginPage from './pages/LoginPage';
-import AIAssistantWidget from './components/AIAssistantWidget'; // Đảm bảo import đúng
+import AIAssistantWidget from './components/AIAssistantWidget'; 
 import RegisterPage from './pages/RegisterPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import HomePage from './pages/HomePage';
@@ -43,9 +43,10 @@ import SupplierInventoryPage from './pages/SupplierInventoryPage';
 import PersonalProfilePage from './pages/PersonalProfilePage';
 import StaffPage from './pages/StaffPage';
 
-/** * Component bảo vệ Route theo vai trò */
+/** * ✅ Component bảo vệ Route theo vai trò (Đã sửa đổi logic triệt tiêu vòng lặp chuyển hướng)
+ */
 const RoleProtectedRoute = ({ children, allowedRole }) => {
-    const { isAuthenticated, loading } = useAuth();
+    const { isAuthenticated, userRole, loading } = useAuth();
 
     if (loading) return (
         <div className="flex items-center justify-center h-screen bg-[#FDF8F3]">
@@ -53,7 +54,14 @@ const RoleProtectedRoute = ({ children, allowedRole }) => {
         </div>
     );
 
+    // 1. Nếu chưa đăng nhập -> Ép quay về trang login
     if (!isAuthenticated) {
+        return <Navigate to="/login" replace />;
+    }
+
+    // 2. Kiểm tra phân quyền: Nếu role hiện tại không khớp với role được cho phép vào tuyến đường này
+    if (allowedRole && userRole !== allowedRole) {
+        // Trả về trang login để người dùng đăng nhập lại đúng tài khoản, tránh kẹt dispatcher gốc
         return <Navigate to="/login" replace />;
     }
 
@@ -125,9 +133,9 @@ function App() {
                     path="/"
                     element={
                         !isAuthenticated ? <Navigate to="/login" replace /> :
-                            userRole === 'supplier' ? <Navigate to="/supplier/dashboard" replace /> :
-                                userRole === 'customer' ? <Navigate to="/customer/dashboard" replace /> :
-                                    <Navigate to="/admin/home" replace />
+                        userRole === 'supplier' ? <Navigate to="/supplier/dashboard" replace /> :
+                        userRole === 'customer' ? <Navigate to="/customer/dashboard" replace /> :
+                        <Navigate to="/admin/home" replace />
                     }
                 />
 
@@ -164,9 +172,9 @@ function App() {
                     </RoleProtectedRoute>
                 } />
 
-                {/* 5. ADMIN/STAFF AREA */}
+                {/* 5. ADMIN/STAFF AREA (Đổi allowedRole khớp với thiết kế Route của bạn) */}
                 <Route path="/admin/*" element={
-                    <RoleProtectedRoute allowedRole="staff">
+                    <RoleProtectedRoute allowedRole={userRole === 'admin' ? 'admin' : 'staff'}>
                         <AdminLayoutWrapper />
                     </RoleProtectedRoute>
                 } />
