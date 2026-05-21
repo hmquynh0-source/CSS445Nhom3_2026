@@ -12,6 +12,7 @@ const categoryRoutes = require('./routes/categoryRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const customerRoutes = require('./routes/customerRoutes');
 const outboundRoutes = require('./routes/outboundRoutes');
+const locationRoutes = require('./routes/locationRoutes');
 const supplierStockRoutes = require('./routes/supplierStockRoutes');
 const processingRoutes = require('./routes/processingRoutes');
 const staffRoutes = require('./routes/staffRoutes');
@@ -40,7 +41,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/outbounds', outboundRoutes);
 app.use('/api/staff', staffRoutes);
-
+app.use('/api/locations', locationRoutes);
 // --- 4. CẤU HÌNH BẮT LỖI LẠC ĐƯỜNG DỰ PHÒNG ---
 // app.use((req, res, next) => {
 //     console.log(`⚠️ Tuyến API chưa khai báo: ${req.method} ${req.originalUrl}`);

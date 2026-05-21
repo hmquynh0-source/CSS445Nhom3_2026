@@ -14,6 +14,14 @@ const CustomerProducts = () => {
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [quantity, setQuantity] = useState(1);
     const [address, setAddress] = useState(''); 
+    const [provinces, setProvinces] = useState([]);
+    const [districts, setDistricts] = useState([]);
+    const [communes, setCommunes] = useState([]);
+    const [selectedProvinceCode, setSelectedProvinceCode] = useState('');
+    const [selectedDistrictCode, setSelectedDistrictCode] = useState('');
+    const [selectedCommuneCode, setSelectedCommuneCode] = useState('');
+    const [hamlet, setHamlet] = useState(''); // thôn/tổ/ấp
+    const [houseNumber, setHouseNumber] = useState('');
     const [orderSuccess, setOrderSuccess] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -38,6 +46,31 @@ const CustomerProducts = () => {
         fetchProducts();
     }, []);
 
+    // Lấy dữ liệu tỉnh/huyện/xã từ API công khai (depth=3 trả về wards)
+    useEffect(() => {
+        const fetchLocations = async () => {
+            try {
+                const res = await axios.get('/api/locations/provinces');
+                if (res.data && res.data.success) {
+                    setProvinces(res.data.data || []);
+                    return;
+                }
+                // Nếu proxy trả về không thành công, thử lấy trực tiếp từ public API
+                const fallback = await axios.get('https://provinces.open-api.vn/api/?depth=3');
+                setProvinces(fallback.data || []);
+            } catch (err) {
+                console.error('Lỗi lấy danh sách tỉnh/huyện (proxy failed), thử fallback:', err);
+                try {
+const fallback = await axios.get('https://provinces.open-api.vn/api/?depth=3');
+                    setProvinces(fallback.data || []);
+                } catch (err2) {
+                    console.error('Lỗi lấy danh sách tỉnh/huyện (fallback cũng lỗi):', err2);
+                }
+            }
+        };
+        fetchLocations();
+    }, []);
+
     // 3. Xử lý đặt hàng (Gửi đúng userId cho Backend)
     const handleConfirmOrder = async () => {
         // Lấy ID dự phòng từ LocalStorage nếu Context bị reset
@@ -49,9 +82,19 @@ const CustomerProducts = () => {
             return;
         }
 
-        if (!address.trim()) {
-            alert("Vui lòng nhập địa chỉ để chúng tôi giao hàng!");
-            return;
+        // Validate structured address (prefer structured selects but fallback to free text)
+        let finalAddressStr = address.trim();
+        const provinceObj = provinces.find(p => String(p.code) === String(selectedProvinceCode));
+        const districtObj = (districts || []).find(d => String(d.code) === String(selectedDistrictCode));
+        const communeObj = (communes || []).find(c => String(c.code) === String(selectedCommuneCode));
+
+        if (!finalAddressStr) {
+            if (!provinceObj || !districtObj || !communeObj || !houseNumber.trim()) {
+                alert("Vui lòng cung cấp đầy đủ địa chỉ: tỉnh, huyện, xã và số nhà!");
+                return;
+            }
+
+            finalAddressStr = `${houseNumber}, ${hamlet ? hamlet + ', ' : ''}${communeObj.name}, ${districtObj.name}, ${provinceObj.name}`;
         }
 
         setIsSubmitting(true);
@@ -63,7 +106,14 @@ const CustomerProducts = () => {
                 quantity: Number(quantity),
                 totalPrice: Number(selectedProduct.displayPrice * quantity),
                 customerName: finalUserName,
-                address: address.trim()    // Gửi thêm địa chỉ cho đầy đủ
+                address: finalAddressStr,
+                addressComponents: {
+                    province: provinceObj?.name || null,
+                    district: districtObj?.name || null,
+                    commune: communeObj?.name || null,
+                    hamlet: hamlet || null,
+                    houseNumber: houseNumber || null
+                }
             };
 
             console.log("🚀 Đang gửi đơn hàng:", orderData);
@@ -79,7 +129,7 @@ const CustomerProducts = () => {
                     setAddress('');
                 }, 3000);
             }
-        } catch (error) {
+} catch (error) {
             console.error("❌ Lỗi Backend trả về:", error.response?.data);
             alert("Đặt hàng thất bại: " + (error.response?.data?.message || "Lỗi kết nối"));
         } finally {
@@ -129,7 +179,7 @@ const CustomerProducts = () => {
                                     onClick={() => { setSelectedProduct(product); setQuantity(1); setAddress(''); }}
                                     className="bg-[#3D2B1F] p-4 rounded-2xl text-white hover:bg-orange-700"
                                 >
-                                    <ShoppingCart size={20} />
+<ShoppingCart size={20} />
                                 </button>
                             </div>
                         </div>
@@ -159,15 +209,85 @@ const CustomerProducts = () => {
 
                                 <div className="space-y-2">
                                     <label className="text-[11px] font-black text-[#A89485] uppercase flex items-center gap-2 px-1">
-                                        <MapPin size={14} /> Địa chỉ giao hàng
-                                    </label>
-                                    <textarea 
-                                        className="w-full bg-[#FDF8F3] border border-[#EFE3D5] rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-[#3D2B1F]"
-                                        placeholder="Nhập địa chỉ nhận hàng..."
-                                        rows="2"
-                                        value={address}
-                                        onChange={(e) => setAddress(e.target.value)}
-                                    />
+                                            <MapPin size={14} /> Địa chỉ giao hàng
+                                        </label>
+                                        <div className="grid grid-cols-1 gap-3">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <select
+                                                    value={selectedProvinceCode}
+                                                    onChange={(e) => {
+                                                        const code = e.target.value;
+                                                        setSelectedProvinceCode(code);
+                                                        setSelectedDistrictCode('');
+                                                        setSelectedCommuneCode('');
+                                                        setHamlet('');
+                                                        setHouseNumber('');
+                                                        const p = provinces.find(p => String(p.code) === String(code));
+setDistricts(p?.districts || []);
+                                                        setCommunes([]);
+                                                    }}
+                                                    className="w-full bg-[#FDF8F3] border border-[#EFE3D5] rounded-2xl p-3 text-sm outline-none"
+                                                >
+                                                    <option value="">Chọn tỉnh / thành</option>
+                                                    {provinces.map(p => (
+                                                        <option key={p.code} value={p.code}>{p.name}</option>
+                                                    ))}
+                                                </select>
+
+                                                <select
+                                                    value={selectedDistrictCode}
+                                                    onChange={(e) => {
+                                                        const code = e.target.value;
+                                                        setSelectedDistrictCode(code);
+                                                        setSelectedCommuneCode('');
+                                                        setHamlet('');
+                                                        const d = (districts || []).find(d => String(d.code) === String(code));
+                                                        setCommunes(d?.wards || d?.communes || []);
+                                                    }}
+                                                    className="w-full bg-[#FDF8F3] border border-[#EFE3D5] rounded-2xl p-3 text-sm outline-none"
+                                                >
+                                                    <option value="">Chọn huyện / quận</option>
+                                                    {districts.map(d => (
+                                                        <option key={d.code} value={d.code}>{d.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <select
+                                                    value={selectedCommuneCode}
+                                                    onChange={(e) => setSelectedCommuneCode(e.target.value)}
+                                                    className="w-full bg-[#FDF8F3] border border-[#EFE3D5] rounded-2xl p-3 text-sm outline-none"
+                                                >
+                                                    <option value="">Chọn xã / phường</option>
+                                                    {communes.map(c => (
+<option key={c.code} value={c.code}>{c.name}</option>
+                                                    ))}
+                                                </select>
+
+                                                <input
+                                                    value={hamlet}
+                                                    onChange={(e) => setHamlet(e.target.value)}
+                                                    placeholder="Thôn / Tổ / Ấp (tùy chọn)"
+                                                    className="w-full bg-[#FDF8F3] border border-[#EFE3D5] rounded-2xl p-3 text-sm outline-none"
+                                                />
+                                            </div>
+
+                                            <input
+                                                value={houseNumber}
+                                                onChange={(e) => setHouseNumber(e.target.value)}
+                                                placeholder="Số nhà, tên đường (bắt buộc nếu không nhập địa chỉ tự do)"
+                                                className="w-full bg-[#FDF8F3] border border-[#EFE3D5] rounded-2xl p-3 text-sm outline-none"
+                                            />
+
+                                            <textarea
+                                                className="w-full bg-[#FDF8F3] border border-[#EFE3D5] rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-[#3D2B1F]"
+                                                placeholder="(Tùy chọn) Ghi chú địa chỉ đầy đủ hoặc hướng dẫn giao hàng..."
+                                                rows="2"
+                                                value={address}
+                                                onChange={(e) => setAddress(e.target.value)}
+                                            />
+                                        </div>
                                 </div>
 
                                 <div className="flex justify-between items-center bg-[#FDF8F3] p-4 rounded-3xl">
@@ -179,7 +299,7 @@ const CustomerProducts = () => {
                                     <div className="text-right">
                                         <p className="text-[10px] font-bold text-[#A89485]">TỔNG CỘNG</p>
                                         <p className="text-xl font-black text-orange-600">{(selectedProduct.displayPrice * quantity).toLocaleString()} đ</p>
-                                    </div>
+</div>
                                 </div>
 
                                 <button 
