@@ -35,4 +35,9 @@ router.post('/forgot-password', forgotPassword);
 // Nếu bạn chưa tạo protect middleware, bạn có thể tạm thời comment dòng này:
 // router.get('/me', protect, getMe);
 
+// @route   PUT /api/auth/update-profile
+// @desc    Cập nhật hồ sơ người dùng
+// @access  Private
+router.put('/update-profile', protect, require('../controllers/authController').updateProfile);
+
 module.exports = router;

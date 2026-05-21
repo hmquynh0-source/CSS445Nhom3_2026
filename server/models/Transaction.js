@@ -16,6 +16,11 @@ const transactionSchema = new mongoose.Schema({
         ref: 'Supplier',
         required: [true, 'Nhà cung cấp là bắt buộc']
     },
+    createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null
+    },
     productName: {
         type: String,
         trim: true,

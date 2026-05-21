@@ -75,9 +75,9 @@ app.put('/api/inbound/update-qc/:lotId', async (req, res) => {
             { batchCode: req.params.lotId },
             { 
                 moisture: Number(moisture), 
-                screen: screen,
-defectRate: Number(defectRate),
-                status: "QC PASSED" 
+                screen: screen, 
+                defectRate: Number(defectRate),
+status: "QC PASSED" 
             },
             { new: true } 
         );
@@ -149,8 +149,9 @@ app.put('/api/inbound/approve/:id', protect, async (req, res) => {
         // Chuyển trạng thái sang hoàn thành mỹ mãn
         order.status = 'COMPLETED';
         await order.save();
-// 1. Tìm sản phẩm trong kho tổng RoastLogic để cộng dồn số lượng và cập nhật giá vốn
-        const product = await Product.findOne({
+
+        // 1. Tìm sản phẩm trong kho tổng RoastLogic để cộng dồn số lượng và cập nhật giá vốn
+const product = await Product.findOne({
             $or: [{ _id: order.product }, { name: order.productName }]
         });
 
@@ -209,27 +210,107 @@ app.put('/api/inbound/approve/:id', protect, async (req, res) => {
  * Endpoint: GET /api/reports/dynamic
  */
 app.get('/api/reports/dynamic', async (req, res) => {
-    const { range } = req.query;
-    let startDate = new Date();
-    if (range === 'day') startDate.setHours(0, 0, 0, 0);
-    else if (range === 'month') { startDate.setDate(1); startDate.setHours(0,0,0,0); }
-try {
-        const revenueData = await Order.aggregate([
-            { $match: { createdAt: { $gte: startDate }, status: 'COMPLETED' } },
-            { $group: { _id: null, total: { $sum: "$totalPrice" } } }
-        ]);
+    const { range = 'month' } = req.query;
+    const today = new Date();
+    let startDate = new Date(today);
+    let labels = [];
 
-        const totalStock = await Product.aggregate([{ $group: { _id: null, total: { $sum: "$stock" } } }]);
-        const inboundCount = await InboundProduct.countDocuments({ createdAt: { $gte: startDate } });
+    if (range === 'day') {
+        startDate.setHours(0, 0, 0, 0, 0);
+        labels = Array.from({ length: 24 }, (_, i) => `${i}h`);
+    } else if (range === 'year') {
+startDate = new Date(today.getFullYear(), 0, 1, 0, 0, 0);
+        labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    } else {
+        startDate = new Date(today.getFullYear(), today.getMonth(), 1, 0, 0, 0);
+        const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+        labels = Array.from({ length: daysInMonth }, (_, i) => `${i + 1}`);
+    }
 
-        res.json({
+    try {
+        const orders = await Order.find({
+            status: 'COMPLETED',
+            createdAt: { $gte: startDate }
+        }).lean();
+
+        const chartData = labels.map(() => 0);
+        orders.forEach(order => {
+            const date = new Date(order.createdAt);
+            let index = 0;
+            if (range === 'day') index = date.getHours();
+            else if (range === 'year') index = date.getMonth();
+            else index = date.getDate() - 1;
+            if (index >= 0 && index < chartData.length) {
+                chartData[index] += order.totalPrice;
+            }
+        });
+
+        const products = await Product.find().lean();
+        const totalStock = products.reduce((sum, p) => sum + (Number(p.stock || p.stockQuantity || 0)), 0);
+        const totalInventoryValue = products.reduce((sum, p) => {
+            const quantity = Number(p.stock || p.stockQuantity || 0);
+            const price = Number(p.costPrice || p.price || 0);
+            return sum + quantity * price;
+        }, 0);
+
+        const inboundTransactions = await Transaction.find({
+            type: 'in',
+            status: { $in: ['COMPLETED', 'APPROVED'] },
+            createdAt: { $gte: startDate }
+        }).lean();
+        const opCost = inboundTransactions.reduce((sum, t) => sum + (Number(t.price || 0) * Number(t.quantity || 0)), 0);
+
+        const allOrders = await Order.find({ createdAt: { $gte: startDate } }).lean();
+        const completedOrders = allOrders.filter(o => o.status === 'COMPLETED').length;
+        const compRate = allOrders.length > 0 ? `${Math.round((completedOrders / allOrders.length) * 100)}%` : '0%';
+
+        const breakdownMap = {};
+        products.forEach(p => {
+            const label = p.category?.name || p.categoryName || p.name || 'Khác';
+            const quantity = Number(p.stock || p.stockQuantity || 0);
+            if (!breakdownMap[label]) breakdownMap[label] = 0;
+            breakdownMap[label] += quantity;
+        });
+        const inventoryBreakdown = Object.entries(breakdownMap)
+            .map(([name, quantity]) => ({ name, quantity }))
+            .sort((a, b) => b.quantity - a.quantity)
+            .slice(0, 5);
+
+        const originPipeline = [
+            { $match: { createdAt: { $gte: startDate } } },
+            {
+                $group: {
+                    _id: '$origin',
+totalWeight: { $sum: '$weight' },
+                    batchCount: { $sum: 1 },
+                    avgMoisture: { $avg: '$moisture' }
+                }
+            },
+            { $sort: { totalWeight: -1 } },
+            { $limit: 6 }
+        ];
+        const originResults = await InboundProduct.aggregate(originPipeline);
+        const originAnalysis = originResults.map(item => ({
+            origin: item._id || 'Không rõ',
+            weight: item.totalWeight,
+            batches: item.batchCount,
+            avgMoisture: Number(item.avgMoisture?.toFixed(1) || 0)
+        }));
+
+        const revenueSum = chartData.reduce((sum, value) => sum + value, 0);
+
+        return res.json({
             success: true,
             kpis: {
-                revenue: (revenueData[0]?.total || 0).toLocaleString('vi-VN', { style: 'currency', currency: 'VND' }),
-                inventory: `${(totalStock[0]?.total || 0).toLocaleString()} kg`,
-                inboundBatches: `${inboundCount} Lô mới`,
-                compRate: "98.4%"
-            }
+                revenue: `${revenueSum.toLocaleString('vi-VN', { style: 'currency', currency: 'VND' })}`,
+                inventory: `${totalStock.toLocaleString()} kg`,
+                opCost: `${opCost.toLocaleString('vi-VN', { style: 'currency', currency: 'VND' })}`,
+                compRate
+            },
+            chartData,
+            chartLabels: labels,
+            inventoryBreakdown,
+            originAnalysis
         });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
@@ -267,12 +348,11 @@ app.post('/api/ai/chat', async (req, res) => {
         }).filter(Boolean).join('\n');
 
         const lowerMessage = message.toLowerCase();
-
-        try {
+try {
             const systemInstruction = `
                 Bạn là RoastLogic AI - Trợ lý tối cao và là chuyên gia độc quyền quản lý Kho Cà Phê Nhân Xanh.
-                Nhiệm vụ cốt lõi của bạn là đọc hiểu dữ liệu hệ thống thực tế được cung cấp để trả về duy nhất một cấu trúc chuỗi JSON sạch.
-Tuyệt đối KHÔNG viết lời chào, không kèm dấu mào đầu, không phân tích bằng chữ nằm ngoài khối JSON.
+                Nhiệm vụ cốt lõi của bạn là đọc hiểu dữ liệu hệ thống thực tế được cung cấp để trả về duy nhất một cấu trúc chuỗi JSON sạch. 
+                Tuyệt đối KHÔNG viết lời chào, không kèm dấu mào đầu, không phân tích bằng chữ nằm ngoài khối JSON.
 
                 BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON MẪU CHUẨN:
                 {
@@ -318,14 +398,13 @@ Tuyệt đối KHÔNG viết lời chào, không kèm dấu mào đầu, không 
 
         } catch (aiError) {
             console.warn("⚠️ Kích hoạt cơ chế dự phòng Local do lỗi Quota Gemini AI.");
-            
-            let fallbackReply = "";
+let fallbackReply = "";
             let fallbackData = [];
 
             if (lowerMessage.includes('độ ẩm') || lowerMessage.includes('qc') || lowerMessage.includes('kiểm định')) {
                 const highMoistureLots = allLots.filter(l => (l.moisture || 0) > 12.5);
-                fallbackReply = highMoistureLots.length > 0
-? `⚠️ [Dự phòng] Có ${highMoistureLots.length} lô độ ẩm cao (>12.5%). Nên kiểm tra thông gió!`
+                fallbackReply = highMoistureLots.length > 0 
+                    ? `⚠️ [Dự phòng] Có ${highMoistureLots.length} lô độ ẩm cao (>12.5%). Nên kiểm tra thông gió!`
                     : `✅ [Dự phòng] Độ ẩm toàn bộ các lô đạt mức lý tưởng (~12.0%).`;
                 fallbackData = allLots.map(l => ({ name: l.batchCode, stockQuantity: l.moisture || 0, unit: '%', sku: l.productName || 'Cà phê' }));
             } else if (lowerMessage.includes('hết hàng') || lowerMessage.includes('sắp hết') || lowerMessage.includes('tồn kho')) {
@@ -370,14 +449,14 @@ setInterval(async () => {
 const PORT = process.env.PORT || 5000;
 const startServer = async () => {
     try {
-        await connectDB(); 
+await connectDB(); 
         server.listen(PORT, () => {
             console.log(`
 ===========================================================
  🚀 SERVER ROASTLOGIC COFFEE ĐANG CHẠY TẠI: http://localhost:${PORT}
  💾 DATABASE (MONGODB): KẾT NỐI THÀNH CÔNG THỰC TẾ
  📡 GEMINI AI ENGINE: ĐÃ KÍCH HOẠT CHẾ ĐỘ ĐỌC HIỂU REAL-TIME
-🛡️ CHẾ ĐỘ PHÂN TẦNG DUYỆT ĐƠN (NCC ➡️ ADMIN): SẴN SÀNG
+ 🛡️ CHẾ ĐỘ PHÂN TẦNG DUYỆT ĐƠN (NCC ➡️ ADMIN): SẴN SÀNG
 ===========================================================
             `);
         });

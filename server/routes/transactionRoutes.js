@@ -63,12 +63,7 @@ router.route('/pending').get(protect, async (req, res) => {
         const query = { status: 'PENDING' };
 
         if (req.user && req.user.role === 'supplier') {
-            const supplier = await Supplier.findOne({
-                $or: [
-                    { email: req.user.email },
-                    { name: req.user.name }
-                ]
-            });
+            const supplier = await Supplier.findOne({ email: req.user.email });
             if (supplier) {
                 query.supplier = supplier._id;
             }
@@ -81,15 +76,27 @@ router.route('/pending').get(protect, async (req, res) => {
             
         return res.status(200).json({ success: true, data: pendingRequests });
     } catch (error) {
-return res.status(500).json({ success: false, message: "Lỗi tải danh sách chờ duyệt" });
+        return res.status(500).json({ success: false, message: "Lỗi tải danh sách chờ duyệt" });
     }
 });
-
 router.get('/supplier/dashboard-stats', protect, supplierPageCtrl.getSupplierStats);
 
 router.get('/', protect, async (req, res) => {
     try {
-        const transactions = await Transaction.find()
+        const query = {};
+            if (req.user) {
+            if (req.user.role === 'supplier') {
+                const supplier = await Supplier.findOne({ email: req.user.email });
+                if (supplier) query.supplier = supplier._id;
+                else query.supplier = null; // No supplier mapping => no access
+            } else if (req.user.role === 'customer') {
+                query.createdBy = req.user._id;
+            } else if (!['admin', 'manager', 'staff'].includes(req.user.role)) {
+                query.createdBy = req.user._id;
+            }
+        }
+
+        const transactions = await Transaction.find(query)
             .populate('product', 'name sku')
             .populate('supplier', 'name')
             .sort({ createdAt: -1 });
@@ -110,6 +117,23 @@ router.get('/:id', protect, async (req, res) => {
             return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng.' });
         }
 
+            if (req.user) {
+            if (req.user.role === 'supplier') {
+                const supplier = await Supplier.findOne({ email: req.user.email });
+                if (supplier && transaction.supplier?.toString() !== supplier._id.toString()) {
+                    return res.status(403).json({ success: false, message: 'Bạn không có quyền xem đơn hàng này.' });
+                }
+            } else if (req.user.role === 'customer') {
+                if (!transaction.createdBy || transaction.createdBy.toString() !== req.user._id.toString()) {
+                    return res.status(403).json({ success: false, message: 'Bạn không có quyền xem đơn hàng này.' });
+                }
+            } else if (!['admin', 'manager', 'staff'].includes(req.user.role)) {
+                if (!transaction.createdBy || transaction.createdBy.toString() !== req.user._id.toString()) {
+                    return res.status(403).json({ success: false, message: 'Bạn không có quyền xem đơn hàng này.' });
+                }
+            }
+        }
+
         return res.status(200).json({ success: true, data: transaction });
     } catch (error) {
         return res.status(500).json({ success: false, message: error.message });
@@ -119,7 +143,7 @@ router.get('/:id', protect, async (req, res) => {
 // --- CRUD CHO Admin Nhập Kho ---
 router.post('/', protect, async (req, res) => {
     try {
-        const { requestId, productName, supplierName, quantity, moisture, screenSize, defects } = req.body;
+const { requestId, productName, supplierName, quantity, moisture, screenSize, defects } = req.body;
         if (!productName || !supplierName || !quantity) {
             return res.status(400).json({ success: false, message: "Vui lòng điền đầy đủ: sản phẩm, nhà cung cấp và số lượng." });
         }
@@ -143,6 +167,7 @@ router.post('/', protect, async (req, res) => {
             type: 'in',
             product: category._id,
             supplier: supplier._id,
+            createdBy: req.user?._id || null,
             productName: category.name,
             supplierName: supplier.name,
             quantity: Number(quantity),
@@ -151,7 +176,7 @@ router.post('/', protect, async (req, res) => {
             status: 'PENDING',
             requestId: requestId?.trim() || `REQ-${Date.now()}`,
             moisture: Number(moisture || 0),
-screen: screenSize || 'Sàng 18',
+            screen: screenSize || 'Sàng 18',
             defectRate: Number(defects || 0),
             notes: 'Yêu cầu nhập kho mới',
             user: req.user?.name || 'Admin'
@@ -185,7 +210,7 @@ router.put('/:id', protect, async (req, res) => {
         }
 
         if (supplierName) {
-            let supplier = await Supplier.findOne({ name: { $regex: new RegExp(`^${supplierName.trim()}$`, 'i') } });
+let supplier = await Supplier.findOne({ name: { $regex: new RegExp(`^${supplierName.trim()}$`, 'i') } });
             if (!supplier) {
                 supplier = await Supplier.create({ name: supplierName.trim() });
             }
@@ -220,7 +245,7 @@ router.delete('/:id', protect, async (req, res) => {
         await transaction.remove();
         return res.status(200).json({ success: true, message: 'Đã xóa phiếu nhập kho.' });
     } catch (error) {
-return res.status(500).json({ success: false, message: error.message });
+        return res.status(500).json({ success: false, message: error.message });
     }
 });
 
@@ -269,6 +294,7 @@ router.post('/import', protect, async (req, res) => {
             type: 'in', 
             product: productId,
             supplier: supplierId,
+            createdBy: req.user?._id || null,
             warehouse: mongoose.Types.ObjectId.isValid(warehouseId) ? warehouseId : null,
             quantity: Number(quantity),
             price: Number(price), 
@@ -297,12 +323,7 @@ const supplierApproveHandler = async (req, res) => {
             : { requestId: id };
 
         if (req.user && req.user.role === 'supplier') {
-            const supplier = await Supplier.findOne({
-$or: [
-                    { email: req.user.email },
-                    { name: req.user.name }
-                ]
-            });
+            const supplier = await Supplier.findOne({ email: req.user.email });
             if (supplier) {
                 transactionQuery.supplier = supplier._id;
             }
@@ -326,8 +347,7 @@ $or: [
         if (!targetProductName) {
             return res.status(400).json({ success: false, message: "Không thể xác định loại hạt cho đơn hàng. Vui lòng kiểm tra thông tin sản phẩm." });
         }
-
-        const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const safeNameRegex = new RegExp(`^${escapeRegex(targetProductName.trim())}$`, 'i');
 
         // Ưu tiên khớp theo categoryID nếu có, rồi fallback về productName
@@ -357,7 +377,7 @@ $or: [
         const findSupplierCategory = async () => {
             const categoryId = transaction.product && transaction.product._id ? transaction.product._id : transaction.product;
             if (categoryId) {
-const categoryById = await Category.findOne({ _id: categoryId, supplier: transaction.supplier });
+                const categoryById = await Category.findOne({ _id: categoryId, supplier: transaction.supplier });
                 if (categoryById) return categoryById;
 
                 const categoryByIdGlobal = await Category.findById(categoryId);
@@ -389,7 +409,7 @@ const categoryById = await Category.findOne({ _id: categoryId, supplier: transac
         }
 
         if (!supplierInventory) {
-            return res.status(404).json({ success: false, message: `NCC chưa có loại hạt "${targetProductName}" trong danh mục kho. Vui lòng kiểm tra dữ liệu NCC hoặc khai báo tồn kho.` });
+return res.status(404).json({ success: false, message: `NCC chưa có loại hạt "${targetProductName}" trong danh mục kho. Vui lòng kiểm tra dữ liệu NCC hoặc khai báo tồn kho.` });
         }
 
         if (supplierInventory.quantity < transaction.quantity) {
@@ -419,7 +439,7 @@ const categoryById = await Category.findOne({ _id: categoryId, supplier: transac
 
             if (!stock.categoryID) {
                 const fallbackCategory = await Category.findOne({ name: safeNameRegex, supplier: transaction.supplier })
-|| await Category.findOne({ name: safeNameRegex });
+                    || await Category.findOne({ name: safeNameRegex });
                 if (fallbackCategory) {
                     stock.categoryID = fallbackCategory._id;
                 }
@@ -452,8 +472,7 @@ router.post('/:id/reject', protect, async (req, res) => {
     try {
         const { id } = req.params;
         const reason = req.body.reason?.trim() || 'Không có lý do cụ thể';
-
-        const transaction = mongoose.Types.ObjectId.isValid(id)
+const transaction = mongoose.Types.ObjectId.isValid(id)
             ? await Transaction.findById(id)
             : await Transaction.findOne({ requestId: id });
 
@@ -487,7 +506,8 @@ const adminConfirmReceiptHandler = async (req, res) => {
         let transaction = mongoose.Types.ObjectId.isValid(id)
             ? await Transaction.findById(id).populate('product')
             : await Transaction.findOne({ requestId: id }).populate('product');
-if (!transaction) return res.status(404).json({ success: false, message: "Không tìm thấy thông tin đơn hàng này." });
+
+        if (!transaction) return res.status(404).json({ success: false, message: "Không tìm thấy thông tin đơn hàng này." });
         
         if (transaction.status === 'COMPLETED') {
             return res.status(400).json({ success: false, message: "Phiếu nhập kho này đã hoàn tất nhập hàng từ trước, không thể cộng dồn tiếp!" });
@@ -513,7 +533,7 @@ if (!transaction) return res.status(404).json({ success: false, message: "Không
             });
         } else {
             await Category.findOneAndUpdate(
-                { name: { $regex: new RegExp(`^${targetProductName.trim()}$`, 'i') } },
+{ name: { $regex: new RegExp(`^${targetProductName.trim()}$`, 'i') } },
                 { $inc: { quantity: transaction.quantity } }
             );
         }
@@ -541,8 +561,15 @@ router.route('/:requestId').get(protect, async (req, res) => {
     try {
         const { requestId } = req.params;
         if (requestId === 'pending') {
-            const pendingRequests = await Transaction.find({ status: 'PENDING' }).populate('product').populate('supplier').sort({ createdAt: -1 });
-return res.status(200).json({ success: true, data: pendingRequests });
+            const query = { status: 'PENDING' };
+            if (req.user && req.user.role === 'supplier') {
+                const supplier = await Supplier.findOne({ email: req.user.email });
+                if (supplier) query.supplier = supplier._id;
+                else query.supplier = null; // no mapping -> no results
+            }
+
+            const pendingRequests = await Transaction.find(query).populate('product').populate('supplier').sort({ createdAt: -1 });
+            return res.status(200).json({ success: true, data: pendingRequests });
         }
 
         let transaction = mongoose.Types.ObjectId.isValid(requestId)

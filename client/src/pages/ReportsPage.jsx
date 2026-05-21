@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FaDownload, FaEllipsisH, FaArrowUp, FaArrowDown, FaCheckCircle } from 'react-icons/fa';
+import { FaEllipsisH } from 'react-icons/fa';
 import { useSocket } from '../context/SocketContext';
 import axios from 'axios';
 
@@ -9,10 +9,13 @@ const ReportingPage = () => {
   const [loading, setLoading] = useState(true);
   const [reportData, setReportData] = useState({
     kpis: { revenue: "$0", inventory: "0 kg", opCost: "$0", compRate: "0%" },
-    chart: [40, 52, 64, 76, 88, 150, 112, 124] // Mảng dữ liệu mặc định ban đầu
+    chartData: [40, 52, 64, 76, 88, 150, 112, 124],
+    chartLabels: [],
+    inventoryBreakdown: [],
+    originAnalysis: []
   });
 
-  // Hàm tải dữ liệu thật từ Server
+  // Tải dữ liệu từ API báo cáo động
   const fetchReport = async (tabName) => {
     setLoading(true);
     try {
@@ -27,8 +30,10 @@ const ReportingPage = () => {
             opCost: res.data.kpis?.opCost || "$0",
             compRate: res.data.kpis?.compRate || "0%"
           },
-          // Kiểm tra an toàn: Nếu server có trả về chartData thì lấy, nếu không thì giữ lại mảng cũ hoặc mảng mặc định tránh bị undefined
-          chart: Array.isArray(res.data.chartData) ? res.data.chartData : [40, 52, 64, 76, 88, 150, 112, 124]
+          chartData: Array.isArray(res.data.chartData) ? res.data.chartData : [40, 52, 64, 76, 88, 150, 112, 124],
+          chartLabels: Array.isArray(res.data.chartLabels) ? res.data.chartLabels : [],
+          inventoryBreakdown: Array.isArray(res.data.inventoryBreakdown) ? res.data.inventoryBreakdown : [],
+          originAnalysis: Array.isArray(res.data.originAnalysis) ? res.data.originAnalysis : []
         });
       }
     } catch (err) {
@@ -38,12 +43,11 @@ const ReportingPage = () => {
     }
   };
 
-  // Chạy khi đổi Tab
   useEffect(() => {
     fetchReport(activeTab);
   }, [activeTab]);
 
-  // Lắng nghe Real-time từ Socket Server
+  // Lắng nghe dữ liệu Real-time từ Socket
   useEffect(() => {
     if (socket) {
       socket.on('report_update', (update) => {
@@ -51,9 +55,8 @@ const ReportingPage = () => {
           ...prev,
           kpis: { 
             ...prev.kpis, 
-            // Cập nhật linh hoạt các trường gửi lên từ Socket phát sóng ngầm (như inventory, inboundBatches)
             revenue: update.revenue || prev.kpis.revenue,
-            inventory: update.inventory || prev.kpis.inventory,
+            // inventory: update.inventory || prev.kpis.inventory,
             compRate: update.compRate || prev.kpis.compRate
           }
         }));
@@ -62,8 +65,11 @@ const ReportingPage = () => {
     return () => socket?.off('report_update');
   }, [socket]);
 
-  // Đảm bảo biến chart luôn là một mảng trước khi render nhằm chống lỗi sập map tuyệt đối
-  const safeChartData = Array.isArray(reportData?.chart) ? reportData.chart : [];
+  const safeChartData = Array.isArray(reportData?.chartData) ? reportData.chartData : [];
+  const safeChartLabels = Array.isArray(reportData?.chartLabels) ? reportData.chartLabels : [];
+
+  // Tính tổng số lượng hạt hiện có trong danh sách phân rã tồn kho để chia tỷ lệ % chính xác
+  const totalBreakdownQty = reportData.inventoryBreakdown.reduce((sum, item) => sum + (item.quantity || 0), 0);
 
   return (
     <div style={{ padding: '40px', backgroundColor: '#FDFCF0', minHeight: '100%' }}>
@@ -76,7 +82,7 @@ const ReportingPage = () => {
           </p>
         </div>
         
-        {/* Date Filter Tabs */}
+        {/* Bộ lọc mốc thời gian */}
         <div style={{ display: 'flex', backgroundColor: '#EFE3D5', padding: '4px', borderRadius: '8px' }}>
           {['NGÀY', 'THÁNG', 'NĂM'].map((tab) => (
             <button 
@@ -100,6 +106,7 @@ const ReportingPage = () => {
 
       {/* --- CHARTS SECTION --- */}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '32px', marginBottom: '32px' }}>
+        {/* Biểu đồ Doanh thu dạng cột đứng */}
         <div style={chartBoxStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h4 style={{ margin: 0, fontSize: '18px', fontWeight: '800' }}>Biểu đồ doanh thu</h4>
@@ -110,43 +117,64 @@ const ReportingPage = () => {
               <div key={i} style={{ textAlign: 'center' }}>
                 <div style={{ 
                   width: '30px', 
-                  height: `${Math.min(h, 200)}px`, // Giới hạn chiều cao hiển thị cột tối đa 200px tránh tràn khung
+                  height: `${Math.min(h, 200)}px`, 
                   backgroundColor: i === safeChartData.length - 1 ? '#3D2B1F' : '#EFE3D5',
                   borderRadius: '4px',
                   transition: 'height 0.6s ease'
                 }}></div>
-                <p style={{ fontSize: '9px', fontWeight: 'bold', marginTop: '8px' }}>P{i+1}</p>
+                <p style={{ fontSize: '9px', fontWeight: 'bold', marginTop: '8px' }}>{safeChartLabels[i] || `P${i+1}`}</p>
               </div>
             ))}
             {safeChartData.length === 0 && (
-              <p style={{ fontSize: '12px', color: '#A89B8D', textAlign: 'center', width: '100%', pb: '40px' }}>Không có dữ liệu biểu đồ.</p>
+               <p style={{ fontSize: '12px', color: '#A89B8D', textAlign: 'center', width: '100%' }}>Không có dữ liệu biểu đồ.</p>
             )}
           </div>
         </div>
 
+        {/* CƠ CẤU TỒN KHO THEO LOẠI HẠT */}
         <div style={chartBoxStyle}>
           <h4 style={{ margin: '0 0 24px 0', fontSize: '18px', fontWeight: '800' }}>Cơ cấu tồn kho</h4>
-          <ProgressItem label="HẠT ARABICA" percent={65} color="#3D2B1F" />
-          <ProgressItem label="ROBUSTA LOẠI A" percent={25} color="#4A6741" />
-          <ProgressItem label="QUY TRÌNH DECAF" percent={10} color="#8B5E3C" />
+          {reportData.inventoryBreakdown.length > 0 ? (
+            reportData.inventoryBreakdown.map((item, index) => {
+              // Tính % động theo tổng khối lượng phân rã hạt nhận từ Server
+              const percent = totalBreakdownQty > 0 ? Math.round((item.quantity / totalBreakdownQty) * 100) : 0;
+              const color = index === 0 ? '#3D2B1F' : index === 1 ? '#4A6741' : '#8B5E3C';
+              
+              return <ProgressItem key={item.name} label={item.name} percent={percent} color={color} />;
+            })
+          ) : (
+            <p style={{ color: '#A89B8D', fontSize: '13px' }}>Không có dữ liệu phân loại tồn kho.</p>
+          )}
         </div>
       </div>
 
-      {/* --- TABLE (Dữ liệu tĩnh ví dụ) --- */}
+      {/* --- TABLE PHÂN TÍCH ORIGIN --- */}
       <div style={{ backgroundColor: '#F9F1E7', borderRadius: '24px', padding: '32px' }}>
          <h3 style={{ fontSize: '14px', fontWeight: '900', color: '#3D2B1F', marginBottom: '24px' }}>PHÂN TÍCH CHI TIẾT ORIGIN</h3>
          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ textAlign: 'left', borderBottom: '1px solid rgba(61, 43, 31, 0.1)' }}>
-                <th style={thStyle}>MÃ SKU / XUẤT XỨ</th>
-                <th style={thStyle}>KHỐI LƯỢNG (TẤN)</th>
-                <th style={thStyle}>GIÁ TRỊ</th>
-                <th style={thStyle}>TRẠNG THÁI</th>
+                <th style={thStyle}>XUẤT XỨ</th>
+                <th style={thStyle}>KHỐI LƯỢNG (kg)</th>
+                <th style={thStyle}>SỐ LÔ</th>
+                <th style={thStyle}>ĐỘ ẨM TB</th>
               </tr>
             </thead>
             <tbody>
-              <OriginRow sku="COL-AR-24" origin="Colombia Medellin" weight="12,450" value="$458,200" status="ỔN ĐỊNH" statusBg="#E8F5E9" statusColor="#4A6741" />
-              <OriginRow sku="VIE-RO-24" origin="Vietnam Robusta" weight="28,900" value="$512,300" status="ĐANG NHẬP" statusBg="#E3F2FD" statusColor="#1565C0" />
+              {reportData.originAnalysis.length > 0 ? (
+                reportData.originAnalysis.map((origin) => (
+                  <tr key={origin.origin} style={{ borderBottom: '1px solid rgba(61, 43, 31, 0.05)' }}>
+                    <td style={tdStyle}><b>{origin.origin}</b></td>
+                    <td style={tdStyle}>{origin.weight.toLocaleString('vi-VN')}</td>
+                    <td style={tdStyle}>{origin.batches}</td>
+                    <td style={tdStyle}>{origin.avgMoisture}%</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td style={tdStyle} colSpan={4}>Không có dữ liệu origin trong khoảng thời gian này.</td>
+                </tr>
+              )}
             </tbody>
          </table>
       </div>
@@ -154,29 +182,29 @@ const ReportingPage = () => {
   );
 };
 
-// --- CÁC SUB-COMPONENTS HỖ TRỢ AN TOÀN ---
-const KpiCard = ({ title, value, trend, trendType, subText, isWarning, isSuccess }) => (
+// --- CÁC COMPONENT HỖ TRỢ GIAO DIỆN ---
+const KpiCard = ({ title, value, trend, trendType }) => (
   <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '20px', boxShadow: '0 4px 15px rgba(0,0,0,0.02)' }}>
     <p style={{ fontSize: '9px', fontWeight: 'bold', color: '#A89B8D', marginBottom: '12px' }}>{title}</p>
     <div style={{ fontSize: '24px', fontWeight: '900', color: '#3D2B1F', marginBottom: '8px', wordBreak: 'break-all' }}>{value}</div>
-    {trend && <span style={{ fontSize: '10px', fontWeight: 'bold', padding: '4px 8px', borderRadius: '12px', backgroundColor: trendType === 'up' ? '#E8F5E9' : '#FFEBEE', color: trendType === 'up' ? '#4A6741' : '#C62828' }}>{trend}</span>}
+    {trend && (
+      <span style={{ fontSize: '10px', fontWeight: 'bold', padding: '4px 8px', borderRadius: '12px', backgroundColor: trendType === 'up' ? '#E8F5E9' : '#FFEBEE', color: trendType === 'up' ? '#4A6741' : '#C62828' }}>
+        {trend}
+      </span>
+    )}
   </div>
 );
 
 const ProgressItem = ({ label, percent, color }) => (
   <div style={{ marginBottom: '16px' }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 'bold', marginBottom: '6px' }}><span>{label}</span><span>{percent}%</span></div>
-    <div style={{ height: '8px', backgroundColor: '#F0F0F0', borderRadius: '4px', overflow: 'hidden' }}><div style={{ width: `${percent}%`, height: '100%', backgroundColor: color }}></div></div>
+    <div style={{ display: 'flex', justifyBetween: 'space-between', fontSize: '10px', fontWeight: 'bold', marginBottom: '6px' }}>
+      <span style={{ flex: 1 }}>{label}</span>
+      <span>{percent}%</span>
+    </div>
+    <div style={{ height: '8px', backgroundColor: '#F0F0F0', borderRadius: '4px', overflow: 'hidden' }}>
+      <div style={{ width: `${percent}%`, height: '100%', backgroundColor: color, transition: 'width 0.5s ease' }}></div>
+    </div>
   </div>
-);
-
-const OriginRow = ({ sku, origin, weight, value, status, statusBg, statusColor }) => (
-  <tr style={{ borderBottom: '1px solid rgba(61, 43, 31, 0.05)' }}>
-    <td style={tdStyle}><b>{sku}</b><br/><small>{origin}</small></td>
-    <td style={tdStyle}>{weight}</td>
-    <td style={tdStyle}>{value}</td>
-    <td style={tdStyle}><span style={{ fontSize: '9px', padding: '5px 10px', borderRadius: '6px', backgroundColor: statusBg, color: statusColor }}>{status}</span></td>
-  </tr>
 );
 
 const tabBtnStyle = (active) => ({ padding: '8px 16px', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: active ? 'white' : 'transparent', color: active ? '#3D2B1F' : '#A89B8D' });

@@ -3,8 +3,8 @@ const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 
 /**
- * @desc    Tạo JWT (JSON Web Token)
- * @param   {string} id - User ID
+ * @desc    Tạo JWT (JSON Web Token)
+ * @param   {string} id - User ID
  * @returns {string} Token
  */
 const generateToken = (id) => {
@@ -15,9 +15,9 @@ const generateToken = (id) => {
 };
 
 /**
- * @desc    Đăng ký người dùng mới
- * @route   POST /api/auth/register
- * @access  Public
+ * @desc    Đăng ký người dùng mới
+ * @route   POST /api/auth/register
+ * @access  Public
  */
 exports.registerUser = async (req, res) => {
     const { name, email, password, role } = req.body;
@@ -89,8 +89,7 @@ exports.loginUser = async (req, res) => {
                 message: 'Mật khẩu không đúng' // Khớp với đặc tả 4.3
             });
         }
-
-        // Bước 4.1: Đăng nhập thành công -> Trả về thông tin và Token
+// Bước 4.1: Đăng nhập thành công -> Trả về thông tin và Token
         res.json({
             success: true,
             message: 'Đăng nhập thành công.',
@@ -146,9 +145,9 @@ exports.forgotPassword = async (req, res) => {
 };
 
 /**
- * @desc    Lấy thông tin người dùng hiện tại (dựa trên JWT)
- * @route   GET /api/auth/me
- * @access  Private
+ * @desc    Lấy thông tin người dùng hiện tại (dựa trên JWT)
+ * @route   GET /api/auth/me
+ * @access  Private
  */
 exports.getMe = async (req, res) => {
     // req.user được gán bởi 'protect' middleware sau khi xác thực token
@@ -171,3 +170,34 @@ exports.getMe = async (req, res) => {
 
 // 💡 Cấu trúc exports cuối cùng
 exports.generateToken = generateToken;
+
+/**
+ * @desc    Cập nhật thông tin hồ sơ người dùng
+ * @route   PUT /api/auth/update-profile
+ * @access  Private
+ */
+exports.updateProfile = async (req, res) => {
+    try {
+        // Nếu middleware 'protect' được dùng, req.user có sẵn
+        const userId = req.user?._id;
+        let user = null;
+
+        if (userId) {
+            user = await User.findById(userId);
+        } else if (req.body.email) {
+            user = await User.findOne({ email: req.body.email });
+        }
+if (!user) return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng để cập nhật.' });
+
+        const allowed = ['name', 'phone', 'position', 'avatar'];
+        allowed.forEach(key => {
+            if (req.body[key] !== undefined) user[key] = req.body[key];
+        });
+
+        await user.save();
+
+        return res.status(200).json({ success: true, message: 'Cập nhật hồ sơ thành công.', data: { _id: user._id, name: user.name, email: user.email } });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: 'Lỗi khi cập nhật hồ sơ: ' + error.message });
+    }
+};
